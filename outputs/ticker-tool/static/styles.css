@@ -427,6 +427,8 @@ tr:hover td {
   place-items: center;
   padding: 18px;
   background: rgba(0, 0, 0, 0.72);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .image-fallback__panel {
@@ -467,6 +469,7 @@ tr:hover td {
   border: 1px solid var(--line);
   background: #020303;
   -webkit-touch-callout: default;
+  -webkit-user-select: auto;
   user-select: auto;
 }
 
@@ -486,6 +489,22 @@ tr:hover td {
   color: var(--text);
   padding: 9px 12px;
   text-decoration: none;
+}
+
+.image-open-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #151a20;
+  color: var(--text);
+  padding: 7px 10px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .image-carousel-wrap {
@@ -556,6 +575,7 @@ tr:hover td {
   border: 1px solid var(--line);
   background: #020303;
   -webkit-touch-callout: default;
+  -webkit-user-select: auto;
   user-select: auto;
 }
 

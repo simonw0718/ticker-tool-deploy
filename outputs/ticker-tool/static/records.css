@@ -326,6 +326,8 @@ button:hover,
   place-items: center;
   padding: 18px;
   background: rgba(0, 0, 0, 0.72);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .image-fallback__panel {
@@ -362,6 +364,7 @@ button:hover,
   border: 1px solid var(--line);
   background: var(--paper);
   -webkit-touch-callout: default;
+  -webkit-user-select: auto;
   user-select: auto;
 }
 

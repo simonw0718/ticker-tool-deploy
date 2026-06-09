@@ -1117,6 +1117,7 @@ async function showImageSetFallback(images) {
                 <figure class="image-slide">
                   <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
                   <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
+                  <a class="image-open-link" href="${image.url}" target="_blank" rel="noopener">Open Image</a>
                 </figure>
               `
             )
