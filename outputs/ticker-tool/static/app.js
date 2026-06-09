@@ -1030,30 +1030,63 @@ async function showImageSetFallback(images) {
         <button type="button" data-close-preview>Close</button>
       </div>
       <p>Swipe left/right to pick an image. Right-click or long-press the image to copy it.</p>
-      <div class="image-carousel" tabindex="0">
-        ${urls
-          .map(
-            (image, index) => `
-              <figure class="image-slide">
-                <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
-                <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
-              </figure>
-            `
-          )
-          .join("")}
+      <div class="image-carousel-wrap">
+        ${urls.length > 1 ? '<button type="button" class="image-nav image-nav--prev" data-report-prev aria-label="Previous report">&lsaquo;</button>' : ""}
+        <div class="image-carousel" tabindex="0">
+          ${urls
+            .map(
+              (image, index) => `
+                <figure class="image-slide">
+                  <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
+                  <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
+                </figure>
+              `
+            )
+            .join("")}
+        </div>
+        ${urls.length > 1 ? '<button type="button" class="image-nav image-nav--next" data-report-next aria-label="Next report">&rsaquo;</button>' : ""}
       </div>
       <div class="image-fallback__dots">
-        ${urls.map((image) => `<a href="${image.url}" target="_blank" rel="noopener">${intervalLabels[image.interval]}</a>`).join("")}
+        ${urls.map((image, index) => `<button type="button" data-report-jump="${index}">${intervalLabels[image.interval]}</button>`).join("")}
       </div>
     </div>
   `;
+  const carousel = overlay.querySelector(".image-carousel");
+  const jumpButtons = [...overlay.querySelectorAll("[data-report-jump]")];
+  const setActiveSlide = (index) => {
+    const nextIndex = clamp(index, 0, urls.length - 1);
+    const slide = carousel.children[nextIndex];
+    if (slide) carousel.scrollTo({ left: slide.offsetLeft, behavior: "smooth" });
+    jumpButtons.forEach((button, buttonIndex) => {
+      button.classList.toggle("active", buttonIndex === nextIndex);
+    });
+  };
+  const syncActiveSlide = () => {
+    const width = carousel.clientWidth || 1;
+    const index = clamp(Math.round(carousel.scrollLeft / width), 0, urls.length - 1);
+    jumpButtons.forEach((button, buttonIndex) => {
+      button.classList.toggle("active", buttonIndex === index);
+    });
+  };
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay || event.target.dataset.closePreview !== undefined) {
       overlay.remove();
       urls.forEach((image) => URL.revokeObjectURL(image.url));
+    } else if (event.target.dataset.reportPrev !== undefined) {
+      syncActiveSlide();
+      const current = jumpButtons.findIndex((button) => button.classList.contains("active"));
+      setActiveSlide((current < 0 ? 0 : current) - 1);
+    } else if (event.target.dataset.reportNext !== undefined) {
+      syncActiveSlide();
+      const current = jumpButtons.findIndex((button) => button.classList.contains("active"));
+      setActiveSlide((current < 0 ? 0 : current) + 1);
+    } else if (event.target.dataset.reportJump !== undefined) {
+      setActiveSlide(Number(event.target.dataset.reportJump));
     }
   });
   document.body.appendChild(overlay);
+  carousel.addEventListener("scroll", () => requestAnimationFrame(syncActiveSlide));
+  syncActiveSlide();
 }
 
 function downloadCsv() {
