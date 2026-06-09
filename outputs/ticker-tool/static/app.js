@@ -423,7 +423,7 @@ async function importCsvFiles(event) {
       source: "csv-import",
       daily,
       weekly: localEnrich(localWeekly(daily)),
-      raw: daily.slice(-Number(els.rawDays.value || 80)),
+      raw: daily.slice(-Number(els.rawDays.value || 30)),
     };
   }
   state.activeTicker = Object.keys(state.data)[0];
@@ -459,7 +459,7 @@ function getRowsForInterval(item, interval) {
   return item?.[interval] || [];
 }
 
-function getTableRows(item, interval, limit = Number(els.rawDays.value || 80)) {
+function getTableRows(item, interval, limit = Number(els.rawDays.value || 30)) {
   return getRowsForInterval(item, interval).slice(-limit);
 }
 

@@ -68,7 +68,7 @@ async function handleFetch(url) {
     .filter(Boolean);
   const start = url.searchParams.get("start") || daysAgoIso(365 * 3);
   const end = url.searchParams.get("end") || todayIso();
-  const rawDays = Number(url.searchParams.get("rawDays") || 60);
+  const rawDays = Number(url.searchParams.get("rawDays") || 30);
   const data = {};
   for (const ticker of tickers) {
     try {

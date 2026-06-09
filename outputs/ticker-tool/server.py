@@ -440,7 +440,7 @@ class Handler(SimpleHTTPRequestHandler):
         tickers = ",".join(params.get("tickers", [",".join(DEFAULT_TICKERS)])).replace("\n", ",").split(",")
         start = params.get("start", [days_ago_iso(365 * 3)])[0]
         end = params.get("end", [today_iso()])[0]
-        raw_days = int(params.get("rawDays", ["60"])[0])
+        raw_days = int(params.get("rawDays", ["30"])[0])
         payload = fetch_payload(tickers, start, end, raw_days)
         body = json.dumps({"start": start, "end": end, "data": payload}, allow_nan=False).encode("utf-8")
         self.send_response(200)
