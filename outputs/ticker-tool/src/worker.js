@@ -139,14 +139,7 @@ async function fetchYahoo(ticker, start, end, interval = "1d") {
     events: "history",
     includeAdjustedClose: "true",
   });
-  const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${normalizeTicker(ticker)}?${params}`, {
-    headers: {
-      "user-agent": "Mozilla/5.0 ticker-tool-cloudflare/1.0",
-      accept: "application/json",
-    },
-  });
-  if (!response.ok) throw new Error(`Yahoo ${response.status}`);
-  const payload = await response.json();
+  const payload = await fetchYahooJson(`https://query1.finance.yahoo.com/v8/finance/chart/${normalizeTicker(ticker)}?${params}`);
   const result = payload.chart?.result?.[0];
   if (!result) throw new Error(payload.chart?.error?.description || "Yahoo returned no rows");
   const timestamps = result.timestamp || [];
@@ -182,6 +175,32 @@ async function fetchYahoo(ticker, start, end, interval = "1d") {
   rows.sort((a, b) => a.date.localeCompare(b.date));
   if (!rows.length) throw new Error("Yahoo returned no usable OHLCV rows");
   return { rows, source: "yahoo" };
+}
+
+async function fetchYahooJson(url) {
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0 ticker-tool-cloudflare/1.0",
+          accept: "application/json",
+        },
+      });
+      if (!response.ok) throw new Error(`Yahoo ${response.status}`);
+      const payload = await response.json();
+      if (payload.chart?.result?.[0]) return payload;
+      lastError = payload.chart?.error?.description || "Yahoo returned no rows";
+    } catch (error) {
+      lastError = error.message || String(error);
+    }
+    if (attempt < 2) await sleep(300 * (attempt + 1));
+  }
+  throw new Error(lastError);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function normalizeTicker(ticker) {

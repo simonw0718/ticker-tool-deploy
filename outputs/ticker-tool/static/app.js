@@ -243,22 +243,35 @@ async function fetchData() {
   syncActiveListFromInput();
   const tickers = parseTickers();
   if (!tickers.length) return;
-  state.data = {};
+  const previousData = { ...state.data };
   setFetchProgress(0, `Fetching ${labelForList(state.activeList)} · 0/${tickers.length}`);
   els.fetchBtn.disabled = true;
   const startedAt = performance.now();
   try {
-    const results = await fetchTickersWithProgress(tickers, (done, total, ticker) => {
+    const results = await fetchTickersWithProgress(tickers, (done, total, ticker, retrying) => {
       const pct = Math.round((done / total) * 100);
-      setFetchProgress(pct, `${pct}% · ${done}/${total} loaded${ticker ? ` · ${ticker}` : ""}`);
+      if (retrying) {
+        setFetchProgress(pct, `${pct}% · retrying ${ticker}`);
+      } else {
+        setFetchProgress(pct, `${pct}% · ${done}/${total} loaded${ticker ? ` · ${ticker}` : ""}`);
+      }
     });
-    state.data = Object.fromEntries(tickers.map((ticker) => [ticker, results[ticker] || { ticker, error: "No response", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] }]));
-    state.activeTicker = Object.keys(state.data).find((ticker) => !state.data[ticker].error) || Object.keys(state.data)[0];
+    state.data = Object.fromEntries(
+      tickers.map((ticker) => {
+        const result = results[ticker] || { ticker, error: "No response", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+        if (result.error && previousData[ticker]?.daily?.length) {
+          return [ticker, { ...previousData[ticker], warning: result.error }];
+        }
+        return [ticker, result];
+      })
+    );
+    const failedCount = Object.values(state.data).filter((item) => item.error).length;
+    state.activeTicker = Object.keys(state.data).find((ticker) => !state.data[ticker].error) || state.activeTicker || Object.keys(state.data)[0];
     resetChartView();
     renderTickerButtons();
     render();
     const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
-    setFetchProgress(100, `Loaded ${Object.keys(state.data).length} tickers · ${seconds}s`);
+    setFetchProgress(100, `Loaded ${Object.keys(state.data).length - failedCount}/${Object.keys(state.data).length} tickers · ${seconds}s${failedCount ? ` · ${failedCount} failed` : ""}`);
   } catch (error) {
     setFetchProgress(100, error.message || String(error));
   } finally {
@@ -275,12 +288,12 @@ async function fetchTickersWithProgress(tickers, onProgress) {
   const results = {};
   let nextIndex = 0;
   let done = 0;
-  const concurrency = Math.min(4, tickers.length);
+  const concurrency = Math.min(2, tickers.length);
   async function worker() {
     while (nextIndex < tickers.length) {
       const ticker = tickers[nextIndex];
       nextIndex += 1;
-      results[ticker] = await fetchOneTicker(ticker);
+      results[ticker] = await fetchOneTicker(ticker, (retryTicker) => onProgress(done, tickers.length, retryTicker, true));
       done += 1;
       onProgress(done, tickers.length, ticker);
     }
@@ -289,19 +302,33 @@ async function fetchTickersWithProgress(tickers, onProgress) {
   return results;
 }
 
-async function fetchOneTicker(ticker) {
+async function fetchOneTicker(ticker, onRetry) {
   const params = new URLSearchParams({
     tickers: ticker,
     start: els.start.value,
     end: els.end.value,
     rawDays: els.rawDays.value,
   });
-  try {
-    const payload = await fetchJson(`/api/fetch?${params}`);
-    return payload.data?.[ticker] || payload.data?.[Object.keys(payload.data || {})[0]] || { ticker, error: "No rows returned", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
-  } catch (error) {
-    return { ticker, error: error.message || String(error), daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const payload = await fetchJson(`/api/fetch?${params}`);
+      const result = payload.data?.[ticker] || payload.data?.[Object.keys(payload.data || {})[0]];
+      if (result?.daily?.length) return result;
+      lastError = result?.error || "No rows returned";
+    } catch (error) {
+      lastError = error.message || String(error);
+    }
+    if (attempt < 2) {
+      onRetry?.(ticker);
+      await delay(700 * (attempt + 1));
+    }
   }
+  return { ticker, error: lastError, daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseCsv(text) {
