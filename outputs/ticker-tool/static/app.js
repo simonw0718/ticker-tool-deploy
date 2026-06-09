@@ -1035,18 +1035,31 @@ async function showImageFallback(blob, filename) {
         <strong>Image ready</strong>
         <button type="button" data-close-preview>Close</button>
       </div>
-      <p>Right-click or long-press the image to copy it.</p>
+      <p>Tap the image, then long-press the enlarged image to copy it.</p>
       <img alt="Generated chart image" src="${url}" />
-      <div class="image-fallback__actions">
-        <a href="${url}" target="_blank" rel="noopener">Open Image</a>
-      </div>
     </div>
   `;
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay || event.target.dataset.closePreview !== undefined) {
       overlay.remove();
       URL.revokeObjectURL(url);
+    } else if (event.target.matches(".image-fallback__panel img")) {
+      showImageCopyFocus(event.target.src, event.target.alt);
     }
+  });
+  document.body.appendChild(overlay);
+}
+
+function showImageCopyFocus(url, alt = "Generated image") {
+  document.querySelector(".image-copy-focus")?.remove();
+  const overlay = document.createElement("div");
+  overlay.className = "image-copy-focus";
+  overlay.innerHTML = `
+    <button type="button" class="image-copy-focus__close" aria-label="Close image preview" data-close-focus>&times;</button>
+    <img alt="${alt}" src="${url}" />
+  `;
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay || event.target.dataset.closeFocus !== undefined) overlay.remove();
   });
   document.body.appendChild(overlay);
 }
@@ -1107,7 +1120,7 @@ async function showImageSetFallback(images) {
         <strong>${state.activeTicker} reports</strong>
         <button type="button" data-close-preview>Close</button>
       </div>
-      <p>Swipe left/right to pick an image. Right-click or long-press the image to copy it.</p>
+      <p>Swipe to pick an image. Tap it, then long-press the enlarged image to copy it.</p>
       <div class="image-carousel-wrap">
         ${urls.length > 1 ? '<button type="button" class="image-nav image-nav--prev" data-report-prev aria-label="Previous report">&lsaquo;</button>' : ""}
         <div class="image-carousel" tabindex="0">
@@ -1117,7 +1130,6 @@ async function showImageSetFallback(images) {
                 <figure class="image-slide">
                   <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
                   <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
-                  <a class="image-open-link" href="${image.url}" target="_blank" rel="noopener">Open Image</a>
                 </figure>
               `
             )
@@ -1161,6 +1173,8 @@ async function showImageSetFallback(images) {
       setActiveSlide((current < 0 ? 0 : current) + 1);
     } else if (event.target.dataset.reportJump !== undefined) {
       setActiveSlide(Number(event.target.dataset.reportJump));
+    } else if (event.target.matches(".image-slide img")) {
+      showImageCopyFocus(event.target.src, event.target.alt);
     }
   });
   document.body.appendChild(overlay);

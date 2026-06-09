@@ -491,22 +491,6 @@ tr:hover td {
   text-decoration: none;
 }
 
-.image-open-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  margin-top: 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #151a20;
-  color: var(--text);
-  padding: 7px 10px;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 800;
-}
-
 .image-carousel-wrap {
   position: relative;
 }
@@ -604,6 +588,47 @@ tr:hover td {
   border-color: #e8edf2;
   background: #e8edf2;
   color: #070809;
+}
+
+.image-copy-focus {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  background: #020303;
+  padding: calc(14px + env(safe-area-inset-top)) 12px calc(80px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.image-copy-focus img {
+  display: block;
+  width: 100%;
+  max-width: 1600px;
+  height: auto;
+  margin: 34px auto 0;
+  object-fit: contain;
+  border: 0;
+  background: #020303;
+  -webkit-touch-callout: default;
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+.image-copy-focus__close {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top));
+  right: 10px;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  border-radius: 999px;
+  background: rgba(21, 26, 32, 0.86);
+  font-size: 24px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
 }
 
 @media (max-width: 900px) {
