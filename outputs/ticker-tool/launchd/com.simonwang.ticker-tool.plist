@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.simonwang.ticker-tool</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>/Users/simonwang/Documents/Codex/2026-06-08/ticker-k-daily-weekly-chart-raw/outputs/ticker-tool/server.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/simonwang/Documents/Codex/2026-06-08/ticker-k-daily-weekly-chart-raw</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/simonwang/Documents/Codex/2026-06-08/ticker-k-daily-weekly-chart-raw/outputs/ticker-tool/logs/launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/simonwang/Documents/Codex/2026-06-08/ticker-k-daily-weekly-chart-raw/outputs/ticker-tool/logs/launchd.err.log</string>
+</dict>
+</plist>

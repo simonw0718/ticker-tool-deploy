@@ -1,0 +1,12 @@
+{
+  "name": "ticker-tool",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev:cloudflare": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.34.0"
+  }
+}

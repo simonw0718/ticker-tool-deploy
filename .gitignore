@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+.env
+.env.*
+__pycache__/
+*.pyc
+
+outputs/ticker-tool/node_modules/
+outputs/ticker-tool/__pycache__/
+outputs/ticker-tool/logs/
+outputs/ticker-tool/cache/
+outputs/ticker-tool/data/
+outputs/ticker-tool/.wrangler/
+
+work/
+
+.DS_Store

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>US Ticker K Tool</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <aside class="panel">
+        <div class="brand">
+          <div>
+            <h1>US Ticker K Tool</h1>
+            <p>Daily / Weekly charts and raw OHLCV</p>
+          </div>
+        </div>
+        <a class="nav-link" href="/records.html">Records</a>
+
+        <label class="field">
+          <span>TICKERS</span>
+          <div id="listTabs" class="list-tabs" role="tablist">
+            <button type="button" data-list="own" class="active">Own</button>
+            <button type="button" data-list="keyWatch">Key Watch</button>
+            <button type="button" data-list="watchlist">Watchlist</button>
+          </div>
+          <textarea id="tickers" spellcheck="false">AAPL
+MSFT
+NVDA
+TSLA
+SPY
+QQQ</textarea>
+        </label>
+
+        <div class="grid2">
+          <label class="field">
+            <span>START</span>
+            <input id="start" type="date" />
+          </label>
+          <label class="field">
+            <span>END</span>
+            <input id="end" type="date" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>RAW ROWS</span>
+          <input id="rawDays" type="number" min="10" max="500" value="80" />
+        </label>
+
+        <button id="fetchBtn" class="primary">Fetch Data</button>
+        <label class="file">
+          <input id="csvFile" type="file" accept=".csv" multiple />
+          <span>Import CSV fallback</span>
+        </label>
+        <div id="status" class="status">Ready</div>
+      </aside>
+
+      <section class="workspace">
+        <header class="toolbar">
+          <div>
+            <div id="tickerButtons" class="ticker-buttons"></div>
+          </div>
+          <div class="actions">
+            <div class="segmented" role="tablist">
+              <button id="dailyBtn" class="active">Daily</button>
+              <button id="weeklyBtn">Weekly</button>
+              <button id="hourlyBtn">1H</button>
+              <button id="fourHourBtn">4H</button>
+            </div>
+            <button id="copyChartBtn">Copy Chart</button>
+            <button id="copyBundleBtn">Copy Full Page</button>
+            <button id="downloadCsvBtn">CSV</button>
+          </div>
+        </header>
+
+        <section class="output-options">
+          <span>Full Page</span>
+          <label><input type="checkbox" data-output-panel="daily" checked /> Daily</label>
+          <label><input type="checkbox" data-output-panel="weekly" checked /> Weekly</label>
+          <label><input type="checkbox" data-output-panel="hourly" /> 1H</label>
+          <label><input type="checkbox" data-output-panel="fourHour" checked /> 4H</label>
+          <label><input type="checkbox" data-output-panel="table" checked /> Table</label>
+        </section>
+
+        <section id="captureArea" class="capture-area">
+          <div class="chart-head">
+            <div>
+              <div id="title" class="title">Select a ticker</div>
+              <div id="subtitle" class="subtitle"></div>
+            </div>
+            <div id="quoteBox" class="quote"></div>
+          </div>
+          <canvas id="chart" width="1400" height="820"></canvas>
+        </section>
+
+        <section class="table-section">
+          <div class="table-head">
+            <h2>Raw Data</h2>
+            <span id="tableMeta"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="rawTable">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

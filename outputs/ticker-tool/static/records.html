@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trading Records</title>
+    <link rel="stylesheet" href="/records.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1 contenteditable="true" data-field="pageTitle">Trading Records</h1>
+        <p contenteditable="true" data-field="pageNote">Position plan, trade records, and add timing.</p>
+      </div>
+      <nav>
+        <a href="/">Chart Tool</a>
+        <button id="copyRecordsBtn">Copy</button>
+        <button id="refreshPricesBtn">Refresh Prices</button>
+        <button id="addAccountBtn">Add Account</button>
+        <button id="addTradeBtn">Add Trade Row</button>
+        <button id="exportBtn">Export JSON</button>
+        <button id="resetBtn">Reset</button>
+      </nav>
+    </header>
+
+    <main id="recordsRoot" class="records"></main>
+
+    <template id="accountTemplate">
+      <section class="account" data-account-id="">
+        <div class="section-head">
+          <h2 contenteditable="true" data-role="account-title"></h2>
+          <div class="row-actions">
+            <button data-action="add-row">Add Row</button>
+            <button data-action="delete-account">Delete</button>
+          </div>
+        </div>
+        <div class="record-table-wrap">
+          <table class="record-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Shares</th>
+                <th>Price Today</th>
+                <th>Cost</th>
+                <th>G/L %</th>
+                <th>Stop Loss</th>
+                <th>Target</th>
+                <th>Add Timing</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </template>
+
+    <template id="tradeTemplate">
+      <section class="trade-record" data-trade-section-id="">
+        <div class="section-head">
+          <h2 contenteditable="true" data-role="trade-title"></h2>
+          <div class="row-actions">
+            <button data-action="add-trade-row">Add Row</button>
+            <button data-action="delete-trade-section">Delete</button>
+          </div>
+        </div>
+        <div class="record-table-wrap">
+          <table class="record-table trade-table">
+            <thead>
+              <tr>
+                <th>Buy or Sell</th>
+                <th>Date</th>
+                <th>Name</th>
+                <th>Shares</th>
+                <th>Cost</th>
+                <th>G/L</th>
+                <th>Reason</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </template>
+
+    <script src="/records.js"></script>
+  </body>
+</html>
