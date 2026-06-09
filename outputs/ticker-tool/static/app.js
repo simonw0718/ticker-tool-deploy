@@ -52,21 +52,48 @@ const intervalLabels = {
   fourHour: "4H",
 };
 
+const WORKER_ORIGIN = "https://ticker-tool.simonw0718.workers.dev";
 const LIST_STORAGE_KEY = "ticker-k-tool-lists-v1";
 const DEFAULT_OWN_LIST = "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ";
 
+function apiUrl(path) {
+  const host = location.hostname;
+  if (host === "ticker-tool.simonw0718.workers.dev" || host === "127.0.0.1" || host === "localhost" || host === "") return path;
+  return `${WORKER_ORIGIN}${path}`;
+}
+
+async function fetchJson(path, options) {
+  const firstUrl = apiUrl(path);
+  let response = await fetch(firstUrl, options);
+  let text = await response.text();
+  if (shouldRetryWorker(firstUrl, response, text)) {
+    response = await fetch(`${WORKER_ORIGIN}${path}`, options);
+    text = await response.text();
+  }
+  if (!response.ok) throw new Error(`API ${response.status}: ${text.slice(0, 120)}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`API returned ${response.headers.get("content-type") || "non-JSON"} from ${new URL(response.url).hostname}`);
+  }
+}
+
+function shouldRetryWorker(url, response, text) {
+  if (url.startsWith(WORKER_ORIGIN)) return false;
+  const contentType = response.headers.get("content-type") || "";
+  return !response.ok || contentType.includes("text/html") || text.trimStart().startsWith("<!DOCTYPE");
+}
+
 async function loadServerStore(key) {
   try {
-    const response = await fetch(`/api/store/${key}`);
-    if (!response.ok) return null;
-    return await response.json();
+    return await fetchJson(`/api/store/${key}`);
   } catch {
     return null;
   }
 }
 
 function saveServerStore(key, payload) {
-  fetch(`/api/store/${key}`, {
+  fetch(apiUrl(`/api/store/${key}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -270,8 +297,7 @@ async function fetchOneTicker(ticker) {
     rawDays: els.rawDays.value,
   });
   try {
-    const response = await fetch(`/api/fetch?${params}`);
-    const payload = await response.json();
+    const payload = await fetchJson(`/api/fetch?${params}`);
     return payload.data?.[ticker] || payload.data?.[Object.keys(payload.data || {})[0]] || { ticker, error: "No rows returned", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
   } catch (error) {
     return { ticker, error: error.message || String(error), daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };

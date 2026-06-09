@@ -7,6 +7,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+      if (request.method === "OPTIONS") return corsResponse();
       if (url.pathname === "/api/fetch") return json(await handleFetch(url));
       if (url.pathname === "/api/quotes") return json(await handleQuotes(url));
       if (url.pathname.startsWith("/api/store/")) return handleStore(request, env, url);
@@ -23,8 +24,25 @@ function json(payload, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      ...corsHeaders(),
     },
   });
+}
+
+function corsResponse() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders(),
+  });
+}
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+  };
 }
 
 async function handleStore(request, env, url) {

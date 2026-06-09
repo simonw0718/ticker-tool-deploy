@@ -3,6 +3,7 @@ const WATCH_TEMPLATE = `[Ticker]
 1. Best add: close >OOO, + vol > OOO -->  add OO %, SL: OOO, core change to OOO
 2. Pull back add: Retrace & hold > OOO + bullish reversal candle --> add OO %, SL: OOO
 3. Strong add: close > OOO + vol > OOO --> add OO%, SL: OOO, core change to OOO`;
+const WORKER_ORIGIN = "https://ticker-tool.simonw0718.workers.dev";
 
 const defaultRecords = {
   pageTitle: "Trading Records",
@@ -57,6 +58,34 @@ const quoteState = {
   loading: false,
 };
 
+function apiUrl(path) {
+  const host = location.hostname;
+  if (host === "ticker-tool.simonw0718.workers.dev" || host === "127.0.0.1" || host === "localhost" || host === "") return path;
+  return `${WORKER_ORIGIN}${path}`;
+}
+
+async function fetchJson(path, options) {
+  const firstUrl = apiUrl(path);
+  let response = await fetch(firstUrl, options);
+  let text = await response.text();
+  if (shouldRetryWorker(firstUrl, response, text)) {
+    response = await fetch(`${WORKER_ORIGIN}${path}`, options);
+    text = await response.text();
+  }
+  if (!response.ok) throw new Error(`API ${response.status}: ${text.slice(0, 120)}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`API returned ${response.headers.get("content-type") || "non-JSON"} from ${new URL(response.url).hostname}`);
+  }
+}
+
+function shouldRetryWorker(url, response, text) {
+  if (url.startsWith(WORKER_ORIGIN)) return false;
+  const contentType = response.headers.get("content-type") || "";
+  return !response.ok || contentType.includes("text/html") || text.trimStart().startsWith("<!DOCTYPE");
+}
+
 function normalizeRecords(value) {
   const next = value || structuredClone(defaultRecords);
   next.pageTitle = next.pageTitle || defaultRecords.pageTitle;
@@ -104,9 +133,7 @@ function saveRecords() {
 
 async function hydrateRecordsFromServer() {
   try {
-    const response = await fetch("/api/store/records");
-    if (!response.ok) return;
-    const saved = await response.json();
+    const saved = await fetchJson("/api/store/records");
     if (!saved) return;
     records = normalizeRecords(saved);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
@@ -117,7 +144,7 @@ async function hydrateRecordsFromServer() {
 }
 
 function saveServerRecords() {
-  fetch("/api/store/records", {
+  fetch(apiUrl("/api/store/records"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(records),
@@ -312,8 +339,7 @@ async function refreshPrices() {
   quoteState.loading = true;
   updateAllComputedRows();
   try {
-    const response = await fetch(`/api/quotes?tickers=${encodeURIComponent(tickers.join(","))}`);
-    const payload = await response.json();
+    const payload = await fetchJson(`/api/quotes?tickers=${encodeURIComponent(tickers.join(","))}`);
     quoteState.prices = payload.data || {};
   } catch {
     quoteState.prices = {};
