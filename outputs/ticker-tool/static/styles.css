@@ -478,7 +478,9 @@ tr:hover td {
   margin-top: 12px;
 }
 
-.image-fallback__actions a {
+.image-fallback__actions a,
+.image-fallback__actions button,
+.image-copy-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -489,6 +491,14 @@ tr:hover td {
   color: var(--text);
   padding: 9px 12px;
   text-decoration: none;
+  font-weight: 800;
+}
+
+.image-copy-button {
+  width: 100%;
+  margin-top: 10px;
+  background: #e8edf2;
+  color: #070809;
 }
 
 .image-carousel-wrap {
@@ -607,13 +617,13 @@ tr:hover td {
   width: 100%;
   max-width: 1600px;
   height: auto;
-  margin: 34px auto 0;
+  margin: 58px auto 0;
   object-fit: contain;
   border: 0;
   background: #020303;
-  -webkit-touch-callout: default;
-  -webkit-user-select: auto;
-  user-select: auto;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .image-copy-focus__close {
@@ -628,6 +638,21 @@ tr:hover td {
   background: rgba(21, 26, 32, 0.86);
   font-size: 24px;
   line-height: 1;
+  backdrop-filter: blur(8px);
+}
+
+.image-copy-focus__action {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 10px;
+  right: 58px;
+  z-index: 2;
+  min-height: 38px;
+  border-radius: 999px;
+  background: #e8edf2;
+  color: #070809;
+  font-size: 14px;
+  font-weight: 800;
   backdrop-filter: blur(8px);
 }
 

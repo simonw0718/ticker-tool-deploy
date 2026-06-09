@@ -1006,25 +1006,32 @@ function canvasToBlob(canvas) {
 }
 
 async function copyImageBlob(blob, successMessage, fallbackName) {
+  if (await tryCopyOrShareBlob(blob, fallbackName, successMessage)) return;
+  await showImageFallback(blob, fallbackName);
+  els.status.textContent = "Clipboard/share blocked. Use the preview image.";
+}
+
+async function tryCopyOrShareBlob(blob, filename, successMessage = "Image copied") {
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Clipboard image copy is not supported");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     els.status.textContent = successMessage;
+    return true;
   } catch {
-    await showImageFallback(blob, fallbackName);
-    els.status.textContent = "Clipboard blocked. Use Share or long-press image.";
   }
-}
-
-async function showImageFallback(blob, filename) {
   const file = new File([blob], filename, { type: "image/png" });
   if (navigator.canShare?.({ files: [file] }) && navigator.share) {
     try {
       await navigator.share({ files: [file], title: filename });
-      return;
+      els.status.textContent = "Share sheet opened";
+      return true;
     } catch {
     }
   }
+  return false;
+}
+
+async function showImageFallback(blob, filename) {
   document.querySelector(".image-fallback")?.remove();
   const url = URL.createObjectURL(blob);
   const overlay = document.createElement("div");
@@ -1035,31 +1042,38 @@ async function showImageFallback(blob, filename) {
         <strong>Image ready</strong>
         <button type="button" data-close-preview>Close</button>
       </div>
-      <p>Tap the image, then long-press the enlarged image to copy it.</p>
+      <p>Use the button first. If iOS blocks it, tap the image for a clean image-only view.</p>
       <img alt="Generated chart image" src="${url}" />
+      <div class="image-fallback__actions">
+        <button type="button" data-copy-single-image>Copy / Share Image</button>
+      </div>
     </div>
   `;
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay || event.target.dataset.closePreview !== undefined) {
       overlay.remove();
       URL.revokeObjectURL(url);
+    } else if (event.target.dataset.copySingleImage !== undefined) {
+      tryCopyOrShareBlob(blob, filename, "Chart image copied");
     } else if (event.target.matches(".image-fallback__panel img")) {
-      showImageCopyFocus(event.target.src, event.target.alt);
+      showImageCopyFocus({ url: event.target.src, alt: event.target.alt, blob, filename });
     }
   });
   document.body.appendChild(overlay);
 }
 
-function showImageCopyFocus(url, alt = "Generated image") {
+function showImageCopyFocus({ url, alt = "Generated image", blob = null, filename = "image.png" }) {
   document.querySelector(".image-copy-focus")?.remove();
   const overlay = document.createElement("div");
   overlay.className = "image-copy-focus";
   overlay.innerHTML = `
     <button type="button" class="image-copy-focus__close" aria-label="Close image preview" data-close-focus>&times;</button>
+    ${blob ? '<button type="button" class="image-copy-focus__action" data-copy-focus-image>Copy / Share</button>' : ""}
     <img alt="${alt}" src="${url}" />
   `;
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay || event.target.dataset.closeFocus !== undefined) overlay.remove();
+    if (event.target.dataset.copyFocusImage !== undefined && blob) tryCopyOrShareBlob(blob, filename, "Image copied");
   });
   document.body.appendChild(overlay);
 }
@@ -1101,7 +1115,7 @@ async function copyFullPage() {
       return;
     }
     await showImageSetFallback(images);
-    els.status.textContent = `${images.length} report image${images.length > 1 ? "s" : ""} ready. Right-click or long-press to copy.`;
+    els.status.textContent = `${images.length} report image${images.length > 1 ? "s" : ""} ready. Use Copy / Share Image.`;
   } catch (error) {
     els.status.textContent = `Copy preview failed: ${error.message || String(error)}`;
   } finally {
@@ -1120,7 +1134,7 @@ async function showImageSetFallback(images) {
         <strong>${state.activeTicker} reports</strong>
         <button type="button" data-close-preview>Close</button>
       </div>
-      <p>Swipe to pick an image. Tap it, then long-press the enlarged image to copy it.</p>
+      <p>Swipe to pick an image, then use Copy / Share Image.</p>
       <div class="image-carousel-wrap">
         ${urls.length > 1 ? '<button type="button" class="image-nav image-nav--prev" data-report-prev aria-label="Previous report">&lsaquo;</button>' : ""}
         <div class="image-carousel" tabindex="0">
@@ -1129,7 +1143,8 @@ async function showImageSetFallback(images) {
               (image, index) => `
                 <figure class="image-slide">
                   <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
-                  <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
+                  <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" data-preview-index="${index}" />
+                  <button type="button" class="image-copy-button" data-copy-preview-image="${index}">Copy / Share Image</button>
                 </figure>
               `
             )
@@ -1173,8 +1188,12 @@ async function showImageSetFallback(images) {
       setActiveSlide((current < 0 ? 0 : current) + 1);
     } else if (event.target.dataset.reportJump !== undefined) {
       setActiveSlide(Number(event.target.dataset.reportJump));
+    } else if (event.target.dataset.copyPreviewImage !== undefined) {
+      const image = urls[Number(event.target.dataset.copyPreviewImage)];
+      if (image) tryCopyOrShareBlob(image.blob, image.filename, `${intervalLabels[image.interval]} report copied`);
     } else if (event.target.matches(".image-slide img")) {
-      showImageCopyFocus(event.target.src, event.target.alt);
+      const image = urls[Number(event.target.dataset.previewIndex)];
+      showImageCopyFocus({ url: event.target.src, alt: event.target.alt, blob: image?.blob, filename: image?.filename });
     }
   });
   document.body.appendChild(overlay);
