@@ -934,6 +934,7 @@ function canvasToBlob(canvas) {
 
 async function copyImageBlob(blob, successMessage, fallbackName) {
   try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Clipboard image copy is not supported");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     els.status.textContent = successMessage;
   } catch {
@@ -978,28 +979,43 @@ async function showImageFallback(blob, filename) {
 }
 
 async function copyFullPage() {
-  if (!state.activeTicker) return;
-  const item = state.data[state.activeTicker];
-  const intervals = getSelectedOutputIntervals().filter((interval) => item && getRowsForInterval(item, interval).length);
-  if (!intervals.length) return;
-  const images = [];
-  for (const interval of intervals) {
-    const canvas = createSingleReportCanvas(interval);
-    const blob = await canvasToBlob(canvas);
-    if (blob) {
-      images.push({
-        interval,
-        filename: `${state.activeTicker}-${intervalLabels[interval].replace(/\s+/g, "-")}-report.png`,
-        blob,
-      });
-    }
-  }
-  if (images.length === 1) {
-    await copyImageBlob(images[0].blob, `${intervalLabels[images[0].interval]} report copied`, images[0].filename);
+  if (!state.activeTicker) {
+    els.status.textContent = "Fetch data first, then copy reports.";
     return;
   }
-  await showImageSetFallback(images);
-  els.status.textContent = `${images.length} report images ready. Right-click or long-press to copy.`;
+  const item = state.data[state.activeTicker];
+  const intervals = getSelectedOutputIntervals().filter((interval) => item && getRowsForInterval(item, interval).length);
+  if (!intervals.length) {
+    els.status.textContent = "No selected report has data yet.";
+    return;
+  }
+  els.copyBundleBtn.disabled = true;
+  els.status.textContent = `Preparing ${intervals.length} report image${intervals.length > 1 ? "s" : ""}...`;
+  try {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const images = [];
+    for (const interval of intervals) {
+      const canvas = createSingleReportCanvas(interval);
+      const blob = await canvasToBlob(canvas);
+      if (blob) {
+        images.push({
+          interval,
+          filename: `${state.activeTicker}-${intervalLabels[interval].replace(/\s+/g, "-")}-report.png`,
+          blob,
+        });
+      }
+    }
+    if (!images.length) {
+      els.status.textContent = "Could not create report image.";
+      return;
+    }
+    await showImageSetFallback(images);
+    els.status.textContent = `${images.length} report image${images.length > 1 ? "s" : ""} ready. Right-click or long-press to copy.`;
+  } catch (error) {
+    els.status.textContent = `Copy preview failed: ${error.message || String(error)}`;
+  } finally {
+    els.copyBundleBtn.disabled = false;
+  }
 }
 
 async function showImageSetFallback(images) {
