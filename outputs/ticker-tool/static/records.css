@@ -399,31 +399,73 @@ button:hover,
 
   .topbar {
     gap: 12px;
-    padding: 14px;
+    padding: 12px;
   }
 
   .topbar h1 {
-    font-size: 19px;
+    font-size: 20px;
+  }
+
+  .topbar p {
+    font-size: 13px;
+    line-height: 1.35;
   }
 
   .topbar nav {
     display: grid;
     grid-template-columns: 1fr 1fr;
     width: 100%;
+    gap: 8px;
+  }
+
+  .topbar a,
+  .topbar button,
+  .row-actions button {
+    min-height: 38px;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+
+  .topbar .icon,
+  .row-actions .icon {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
   }
 
   .records {
-    padding: 18px 12px 48px;
+    padding: 16px 12px calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .account,
+  .daily-watch,
+  .trade-record {
+    margin-bottom: 24px;
+    padding-bottom: 22px;
   }
 
   .section-head {
-    gap: 10px;
+    gap: 9px;
+    margin-bottom: 10px;
+  }
+
+  .section-head h2 {
+    font-size: 16px;
   }
 
   .row-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     width: 100%;
+    gap: 8px;
+  }
+
+  .daily-watch textarea {
+    min-height: clamp(180px, 34svh, 300px);
+    max-height: 42svh;
+    padding: 12px;
+    font-size: 16px;
+    line-height: 1.45;
   }
 
   .record-table {
@@ -462,17 +504,40 @@ button:hover,
 }
 
 @media (max-width: 420px) {
-  .topbar nav,
+  .topbar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .row-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar {
-    padding: 12px 10px;
+    padding: 12px 10px 10px;
+  }
+
+  .topbar a,
+  .topbar button {
+    min-width: 0;
+    gap: 6px;
+    white-space: nowrap;
   }
 
   .records {
     padding-left: 10px;
     padding-right: 10px;
+  }
+
+  .daily-watch textarea {
+    min-height: 190px;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar a,
+  .topbar button,
+  .row-actions button {
+    font-size: 12px;
+    padding-inline: 7px;
   }
 }
