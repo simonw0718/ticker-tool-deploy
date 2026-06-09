@@ -419,6 +419,10 @@ tr:hover td {
   -webkit-overflow-scrolling: touch;
 }
 
+.image-fallback__panel--wide {
+  width: min(1220px, 100%);
+}
+
 .image-fallback__head,
 .image-fallback__actions {
   display: flex;
@@ -460,6 +464,62 @@ tr:hover td {
   color: var(--text);
   padding: 9px 12px;
   text-decoration: none;
+}
+
+.image-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: min(100%, 1080px);
+  gap: 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.image-slide {
+  margin: 0;
+  scroll-snap-align: start;
+}
+
+.image-slide figcaption {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.image-slide img {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  background: #020303;
+  -webkit-touch-callout: default;
+  user-select: auto;
+}
+
+.image-fallback__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.image-fallback__dots a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #151a20;
+  color: var(--text);
+  padding: 6px 10px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 @media (max-width: 900px) {
@@ -643,6 +703,14 @@ tr:hover td {
 
   .image-fallback__panel img {
     max-height: 58vh;
+  }
+
+  .image-carousel {
+    grid-auto-columns: 100%;
+  }
+
+  .image-slide img {
+    max-height: 62vh;
   }
 
   table {

@@ -850,6 +850,42 @@ function createReportCanvas() {
   return canvas;
 }
 
+function createSingleReportCanvas(interval) {
+  const item = state.data[state.activeTicker];
+  const rows = item ? getRowsForInterval(item, interval) : [];
+  const includeTable = shouldIncludeOutputTables();
+  const width = 1600;
+  const chartH = 620;
+  const gap = 24;
+  const tableRows = includeTable ? getReportTableRows(item, interval) : [];
+  const tableH = includeTable ? reportTableHeight(tableRows.length) + gap : 0;
+  const height = 110 + chartH + gap + tableH + 24;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = colors.bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#0b0f13";
+  ctx.fillRect(0, 0, width, 86);
+  drawReportText(ctx, `${state.activeTicker} · ${intervalLabels[interval]} Report`, 34, 32, 30, colors.text, "800");
+  drawReportText(ctx, `Source: ${item?.source || ""} · Intraday: ${item?.intradaySource || "n/a"}`, 34, 64, 17, colors.muted);
+  const last = rows?.[rows.length - 1] || item?.daily?.[item.daily.length - 1];
+  if (last) {
+    const changeColor = last.change >= 0 ? colors.up : colors.down;
+    drawReportText(ctx, `Close ${fmt(last.close)}`, width - 34, 30, 21, colors.text, "700", "right");
+    drawReportText(ctx, `${fmt(last.change)} (${fmt(last.changePct)}%) · Vol ${fmtVolume(last.volume)}`, width - 34, 62, 17, changeColor, "600", "right");
+  }
+  const chart = createReportChartCanvas(rows, state.activeTicker, interval);
+  ctx.drawImage(chart, 34, 110, width - 68, chartH);
+  if (includeTable) drawReportTable(ctx, tableRows, interval, 110 + chartH + gap, width);
+  return canvas;
+}
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
 async function copyImageBlob(blob, successMessage, fallbackName) {
   try {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
@@ -879,11 +915,10 @@ async function showImageFallback(blob, filename) {
         <strong>Image ready</strong>
         <button type="button" data-close-preview>Close</button>
       </div>
-      <p>Mobile browser blocked direct copy. Long-press the image to copy/save, or open/download it.</p>
+      <p>Right-click or long-press the image to copy it.</p>
       <img alt="Generated chart image" src="${url}" />
       <div class="image-fallback__actions">
         <a href="${url}" target="_blank" rel="noopener">Open Image</a>
-        <a href="${url}" download="${filename}">Download</a>
       </div>
     </div>
   `;
@@ -898,11 +933,65 @@ async function showImageFallback(blob, filename) {
 
 async function copyFullPage() {
   if (!state.activeTicker) return;
-  const report = createReportCanvas();
-  report.toBlob((blob) => {
-    if (!blob) return;
-    copyImageBlob(blob, "Full page image copied", `${state.activeTicker}-${state.interval}-full-page.png`);
-  }, "image/png");
+  const item = state.data[state.activeTicker];
+  const intervals = getSelectedOutputIntervals().filter((interval) => item && getRowsForInterval(item, interval).length);
+  if (!intervals.length) return;
+  const images = [];
+  for (const interval of intervals) {
+    const canvas = createSingleReportCanvas(interval);
+    const blob = await canvasToBlob(canvas);
+    if (blob) {
+      images.push({
+        interval,
+        filename: `${state.activeTicker}-${intervalLabels[interval].replace(/\s+/g, "-")}-report.png`,
+        blob,
+      });
+    }
+  }
+  if (images.length === 1) {
+    await copyImageBlob(images[0].blob, `${intervalLabels[images[0].interval]} report copied`, images[0].filename);
+    return;
+  }
+  await showImageSetFallback(images);
+  els.status.textContent = `${images.length} report images ready. Right-click or long-press to copy.`;
+}
+
+async function showImageSetFallback(images) {
+  document.querySelector(".image-fallback")?.remove();
+  const urls = images.map((image) => ({ ...image, url: URL.createObjectURL(image.blob) }));
+  const overlay = document.createElement("div");
+  overlay.className = "image-fallback image-fallback--set";
+  overlay.innerHTML = `
+    <div class="image-fallback__panel image-fallback__panel--wide" role="dialog" aria-modal="true">
+      <div class="image-fallback__head">
+        <strong>${state.activeTicker} reports</strong>
+        <button type="button" data-close-preview>Close</button>
+      </div>
+      <p>Swipe left/right to pick an image. Right-click or long-press the image to copy it.</p>
+      <div class="image-carousel" tabindex="0">
+        ${urls
+          .map(
+            (image, index) => `
+              <figure class="image-slide">
+                <figcaption>${index + 1}. ${intervalLabels[image.interval]} + ${shouldIncludeOutputTables() ? "Table" : "Chart"}</figcaption>
+                <img alt="${state.activeTicker} ${intervalLabels[image.interval]} report" src="${image.url}" />
+              </figure>
+            `
+          )
+          .join("")}
+      </div>
+      <div class="image-fallback__dots">
+        ${urls.map((image) => `<a href="${image.url}" target="_blank" rel="noopener">${intervalLabels[image.interval]}</a>`).join("")}
+      </div>
+    </div>
+  `;
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay || event.target.dataset.closePreview !== undefined) {
+      overlay.remove();
+      urls.forEach((image) => URL.revokeObjectURL(image.url));
+    }
+  });
+  document.body.appendChild(overlay);
 }
 
 function downloadCsv() {
