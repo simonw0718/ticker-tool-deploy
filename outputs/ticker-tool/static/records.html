@@ -23,7 +23,18 @@
       </nav>
     </header>
 
-    <main id="recordsRoot" class="records"></main>
+    <main class="records">
+      <section class="daily-watch">
+        <div class="section-head">
+          <h2>Daily Watch Add / S/L</h2>
+          <div class="row-actions">
+            <button id="copyWatchTemplateBtn" type="button">Copy Template</button>
+          </div>
+        </div>
+        <textarea id="dailyWatchText" spellcheck="false" placeholder="Paste daily watch add / S/L reminders here."></textarea>
+      </section>
+      <div id="recordsRoot"></div>
+    </main>
 
     <template id="accountTemplate">
       <section class="account" data-account-id="">

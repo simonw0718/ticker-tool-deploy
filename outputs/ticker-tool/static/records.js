@@ -1,8 +1,13 @@
 const STORAGE_KEY = "ticker-k-tool-records-v1";
+const WATCH_TEMPLATE = `[Ticker]
+1. Best add: close >OOO, + vol > OOO -->  add OO %, SL: OOO, core change to OOO
+2. Pull back add: Retrace & hold > OOO + bullish reversal candle --> add OO %, SL: OOO
+3. Strong add: close > OOO + vol > OOO --> add OO%, SL: OOO, core change to OOO`;
 
 const defaultRecords = {
   pageTitle: "Trading Records",
   pageNote: "Position plan, trade records, and add timing.",
+  dailyWatch: "",
   accounts: [
     {
       id: crypto.randomUUID(),
@@ -44,6 +49,7 @@ const defaultRecords = {
 let records = normalizeRecords(loadRecords());
 
 const root = document.querySelector("#recordsRoot");
+const dailyWatchText = document.querySelector("#dailyWatchText");
 const accountTemplate = document.querySelector("#accountTemplate");
 const tradeTemplate = document.querySelector("#tradeTemplate");
 const quoteState = {
@@ -55,6 +61,7 @@ function normalizeRecords(value) {
   const next = value || structuredClone(defaultRecords);
   next.pageTitle = next.pageTitle || defaultRecords.pageTitle;
   next.pageNote = next.pageNote || defaultRecords.pageNote;
+  next.dailyWatch = typeof next.dailyWatch === "string" ? next.dailyWatch : "";
   if (next.pageNote.includes("chart notes")) next.pageNote = defaultRecords.pageNote;
   next.accounts = Array.isArray(next.accounts) ? next.accounts : structuredClone(defaultRecords.accounts);
   next.trades = Array.isArray(next.trades) ? next.trades : structuredClone(defaultRecords.trades);
@@ -120,9 +127,29 @@ function saveServerRecords() {
 function render() {
   document.querySelector('[data-field="pageTitle"]').textContent = records.pageTitle;
   document.querySelector('[data-field="pageNote"]').textContent = records.pageNote;
+  dailyWatchText.value = records.dailyWatch || "";
   root.innerHTML = "";
   records.accounts.forEach((account) => root.appendChild(renderAccount(account)));
   records.trades.forEach((section) => root.appendChild(renderTradeSection(section)));
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.style.position = "fixed";
+    fallback.style.left = "-9999px";
+    document.body.appendChild(fallback);
+    fallback.select();
+    document.execCommand("copy");
+    fallback.remove();
+  }
+}
+
+async function copyWatchTemplate() {
+  await copyText(WATCH_TEMPLATE);
 }
 
 function renderAccount(account) {
@@ -370,20 +397,38 @@ function reportText(ctx, text, x, y, size = 22, weight = "500", color = "#e8edf2
 }
 
 function wrapText(ctx, text, maxWidth) {
-  const words = String(text || "").split(/\s+/);
   const lines = [];
-  let line = "";
-  words.forEach((word) => {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width <= maxWidth || !line) {
-      line = test;
-    } else {
-      lines.push(line);
-      line = word;
-    }
+  String(text || "").split(/\n/).forEach((paragraph) => {
+    const words = paragraph.split(/\s+/);
+    let line = "";
+    words.forEach((word) => {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width <= maxWidth || !line) {
+        line = test;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    });
+    lines.push(line);
   });
-  if (line) lines.push(line);
   return lines;
+}
+
+function drawTextBlockToCanvas(ctx, title, text, y, width, margin) {
+  reportText(ctx, title, margin, y, 22, "800");
+  y += 34;
+  const lines = wrapText(ctx, text || "", width - margin * 2 - 28);
+  const lineH = 22;
+  const boxH = Math.max(68, lines.length * lineH + 28);
+  ctx.fillStyle = "#080a0d";
+  ctx.fillRect(margin, y, width - margin * 2, boxH);
+  ctx.strokeStyle = "#252a31";
+  ctx.strokeRect(margin, y, width - margin * 2, boxH);
+  lines.forEach((line, index) => {
+    reportText(ctx, line, margin + 14, y + 22 + index * lineH, 17);
+  });
+  return y + boxH + 44;
 }
 
 function drawTableToCanvas(ctx, title, headers, rows, columns, y, width, margin, rowH) {
@@ -420,6 +465,9 @@ async function createRecordsCanvas() {
   const margin = 42;
   const rowH = 52;
   let height = 110;
+  if (records.dailyWatch) {
+    height += 56 + Math.max(68, wrapText({ measureText: (value) => ({ width: String(value).length * 9 }) }, records.dailyWatch, width - margin * 2 - 28).length * 22 + 28) + 44;
+  }
   records.accounts.forEach((account) => {
     height += 56 + rowH * (account.rows.length + 1) + 44;
   });
@@ -439,6 +487,9 @@ async function createRecordsCanvas() {
   reportText(ctx, records.pageNote, margin, 75, 17, "500", "#8c949f");
 
   let y = 128;
+  if (records.dailyWatch) {
+    y = drawTextBlockToCanvas(ctx, "Daily Watch Add / S/L", records.dailyWatch, y, width, margin);
+  }
   const accountHeaders = ["Name", "Shares", "Price Today", "Cost", "G/L %", "Stop Loss", "Target", "Add Timing"];
   const accountColumns = [
     [margin, 120],
@@ -547,6 +598,17 @@ document.addEventListener("input", (event) => {
 
 document.addEventListener("paste", (event) => {
   const target = event.target;
+  if (target === dailyWatchText) {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain").replace(/\r\n/g, "\n");
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    target.value = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
+    target.selectionStart = target.selectionEnd = start + text.length;
+    records.dailyWatch = target.value;
+    saveRecords();
+    return;
+  }
   if (!target.isContentEditable) return;
   event.preventDefault();
   const text = event.clipboardData.getData("text/plain").replace(/\r\n/g, "\n");
@@ -590,6 +652,11 @@ document.querySelector("#addTradeBtn").onclick = addTradeSection;
 document.querySelector("#exportBtn").onclick = exportJson;
 document.querySelector("#copyRecordsBtn").onclick = copyRecords;
 document.querySelector("#refreshPricesBtn").onclick = refreshPrices;
+document.querySelector("#copyWatchTemplateBtn").onclick = copyWatchTemplate;
+dailyWatchText.addEventListener("input", () => {
+  records.dailyWatch = dailyWatchText.value;
+  saveRecords();
+});
 document.querySelector("#resetBtn").onclick = () => {
   records = structuredClone(defaultRecords);
   saveRecords();

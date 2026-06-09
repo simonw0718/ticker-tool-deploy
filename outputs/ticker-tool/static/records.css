@@ -24,7 +24,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -101,10 +102,30 @@ button:hover,
 
 .account,
 .chart-note,
+.daily-watch,
 .trade-record {
   margin-bottom: 34px;
   padding-bottom: 28px;
   border-bottom: 1px solid var(--line);
+}
+
+.daily-watch textarea {
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text);
+  padding: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  outline: none;
+}
+
+.daily-watch textarea:focus {
+  box-shadow: 0 0 0 2px rgba(75, 124, 255, 0.75);
 }
 
 .section-head {
