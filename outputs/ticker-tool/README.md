@@ -94,6 +94,18 @@ STOOQ_APIKEY=your_key python3 outputs/ticker-tool/server.py
 
 如果要讓手機或外出時也能使用，建議部署到 Cloudflare Workers + KV。這個版本不需要 Mac 一直開著，網址會持續可開。
 
+目前部署網址：
+
+```text
+https://ticker-tool.simonw0718.workers.dev
+```
+
+Records：
+
+```text
+https://ticker-tool.simonw0718.workers.dev/records
+```
+
 ### 為什麼選 Cloudflare
 
 - Workers Free 目前包含每日 100,000 requests，對個人使用足夠。
