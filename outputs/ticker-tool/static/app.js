@@ -24,6 +24,7 @@ const els = {
   end: document.querySelector("#end"),
   rawDays: document.querySelector("#rawDays"),
   fetchBtn: document.querySelector("#fetchBtn"),
+  fetchProgress: document.querySelector("#fetchProgress"),
   csvFile: document.querySelector("#csvFile"),
   status: document.querySelector("#status"),
   tickerButtons: document.querySelector("#tickerButtons"),
@@ -215,21 +216,66 @@ async function fetchData() {
   syncActiveListFromInput();
   const tickers = parseTickers();
   if (!tickers.length) return;
-  els.status.textContent = `Fetching ${labelForList(state.activeList)} tickers...`;
+  state.data = {};
+  setFetchProgress(0, `Fetching ${labelForList(state.activeList)} · 0/${tickers.length}`);
+  els.fetchBtn.disabled = true;
+  const startedAt = performance.now();
+  try {
+    const results = await fetchTickersWithProgress(tickers, (done, total, ticker) => {
+      const pct = Math.round((done / total) * 100);
+      setFetchProgress(pct, `${pct}% · ${done}/${total} loaded${ticker ? ` · ${ticker}` : ""}`);
+    });
+    state.data = Object.fromEntries(tickers.map((ticker) => [ticker, results[ticker] || { ticker, error: "No response", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] }]));
+    state.activeTicker = Object.keys(state.data).find((ticker) => !state.data[ticker].error) || Object.keys(state.data)[0];
+    resetChartView();
+    renderTickerButtons();
+    render();
+    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    setFetchProgress(100, `Loaded ${Object.keys(state.data).length} tickers · ${seconds}s`);
+  } catch (error) {
+    setFetchProgress(100, error.message || String(error));
+  } finally {
+    els.fetchBtn.disabled = false;
+  }
+}
+
+function setFetchProgress(percent, label) {
+  els.fetchProgress.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  els.status.textContent = label;
+}
+
+async function fetchTickersWithProgress(tickers, onProgress) {
+  const results = {};
+  let nextIndex = 0;
+  let done = 0;
+  const concurrency = Math.min(4, tickers.length);
+  async function worker() {
+    while (nextIndex < tickers.length) {
+      const ticker = tickers[nextIndex];
+      nextIndex += 1;
+      results[ticker] = await fetchOneTicker(ticker);
+      done += 1;
+      onProgress(done, tickers.length, ticker);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return results;
+}
+
+async function fetchOneTicker(ticker) {
   const params = new URLSearchParams({
-    tickers: tickers.join(","),
+    tickers: ticker,
     start: els.start.value,
     end: els.end.value,
     rawDays: els.rawDays.value,
   });
-  const response = await fetch(`/api/fetch?${params}`);
-  const payload = await response.json();
-  state.data = payload.data;
-  state.activeTicker = Object.keys(state.data).find((ticker) => !state.data[ticker].error) || Object.keys(state.data)[0];
-  resetChartView();
-  renderTickerButtons();
-  render();
-  els.status.textContent = `Loaded ${Object.keys(state.data).length} tickers`;
+  try {
+    const response = await fetch(`/api/fetch?${params}`);
+    const payload = await response.json();
+    return payload.data?.[ticker] || payload.data?.[Object.keys(payload.data || {})[0]] || { ticker, error: "No rows returned", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+  } catch (error) {
+    return { ticker, error: error.message || String(error), daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+  }
 }
 
 function parseCsv(text) {

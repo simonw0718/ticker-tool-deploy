@@ -57,6 +57,9 @@ QQQ</textarea>
         </label>
 
         <button id="fetchBtn" class="primary icon-button"><svg class="icon"><use href="#icon-search"></use></svg><span>Fetch Data</span></button>
+        <div class="progress" aria-hidden="true">
+          <div id="fetchProgress" class="progress__bar"></div>
+        </div>
         <label class="file">
           <input id="csvFile" type="file" accept=".csv" multiple />
           <span class="icon-button"><svg class="icon"><use href="#icon-upload"></use></svg><span>Import CSV</span></span>
