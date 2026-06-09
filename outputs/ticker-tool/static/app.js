@@ -302,12 +302,13 @@ async function fetchTickersWithProgress(tickers, onProgress) {
   return results;
 }
 
-async function fetchOneTicker(ticker, onRetry) {
+async function fetchOneTicker(ticker, onRetry, includeIntraday = false) {
   const params = new URLSearchParams({
     tickers: ticker,
     start: els.start.value,
     end: els.end.value,
     rawDays: els.rawDays.value,
+    intraday: includeIntraday ? "1" : "0",
   });
   let lastError = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -466,10 +467,11 @@ function renderTickerButtons() {
     const button = document.createElement("button");
     button.textContent = ticker;
     button.className = ticker === state.activeTicker ? "active" : "";
-    button.onclick = () => {
+    button.onclick = async () => {
       state.activeTicker = ticker;
       resetChartView();
       renderTickerButtons();
+      if (["hourly", "fourHour"].includes(state.interval)) await ensureIntradayLoaded(ticker);
       render();
     };
     els.tickerButtons.appendChild(button);
@@ -488,6 +490,24 @@ function getRowsForInterval(item, interval) {
 
 function getTableRows(item, interval, limit = Number(els.rawDays.value || 30)) {
   return getRowsForInterval(item, interval).slice(-limit);
+}
+
+async function ensureIntradayLoaded(ticker = state.activeTicker) {
+  const item = state.data[ticker];
+  if (!item || item.error || item.intradayLoaded || item.intradayLoading) return;
+  item.intradayLoading = true;
+  els.status.textContent = `Loading 1H / 4H for ${ticker}...`;
+  try {
+    const result = await fetchOneTicker(ticker, null, true);
+    if (result?.daily?.length) {
+      state.data[ticker] = { ...item, ...result, intradayLoaded: true, intradayLoading: false };
+      els.status.textContent = `Loaded 1H / 4H for ${ticker}`;
+      return;
+    }
+    item.warning = result?.error || "Intraday data unavailable";
+  } finally {
+    item.intradayLoading = false;
+  }
 }
 
 function getSelectedOutputIntervals() {
@@ -1036,8 +1056,13 @@ async function copyFullPage() {
     els.status.textContent = "Fetch data first, then copy reports.";
     return;
   }
-  const item = state.data[state.activeTicker];
-  const intervals = getSelectedOutputIntervals().filter((interval) => item && getRowsForInterval(item, interval).length);
+  let item = state.data[state.activeTicker];
+  const selectedIntervals = getSelectedOutputIntervals();
+  if (selectedIntervals.some((interval) => ["hourly", "fourHour"].includes(interval))) {
+    await ensureIntradayLoaded(state.activeTicker);
+    item = state.data[state.activeTicker];
+  }
+  const intervals = selectedIntervals.filter((interval) => item && getRowsForInterval(item, interval).length);
   if (!intervals.length) {
     els.status.textContent = "No selected report has data yet.";
     return;
@@ -1166,7 +1191,7 @@ els.listTabs.addEventListener("click", (event) => {
   switchTickerList(button.dataset.list);
 });
 els.csvFile.onchange = importCsvFiles;
-function setIntervalView(interval) {
+async function setIntervalView(interval) {
   state.interval = interval;
   resetChartView();
   [
@@ -1175,6 +1200,7 @@ function setIntervalView(interval) {
     [els.hourlyBtn, "hourly"],
     [els.fourHourBtn, "fourHour"],
   ].forEach(([button, value]) => button.classList.toggle("active", value === interval));
+  if (["hourly", "fourHour"].includes(interval)) await ensureIntradayLoaded();
   render();
 }
 els.dailyBtn.onclick = () => setIntervalView("daily");

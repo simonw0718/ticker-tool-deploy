@@ -346,7 +346,7 @@ def finite_or_none(value):
     return value
 
 
-def fetch_payload(tickers: list[str], start: str, end: str, raw_days: int) -> dict:
+def fetch_payload(tickers: list[str], start: str, end: str, raw_days: int, include_intraday: bool = True) -> dict:
     result = {}
     for ticker in tickers:
         clean = normalize_ticker(ticker)
@@ -361,20 +361,24 @@ def fetch_payload(tickers: list[str], start: str, end: str, raw_days: int) -> di
                 if not daily:
                     raise ValueError("No rows returned")
             weekly = weekly_from_daily(daily)
-            try:
-                hourly, hourly_source = fetch_yahoo(clean, start, end, "1h")
-            except Exception:
-                hourly, hourly_source = [], source
+            hourly, hourly_source = [], source
+            if include_intraday:
+                try:
+                    hourly, hourly_source = fetch_yahoo(clean, start, end, "1h")
+                except Exception:
+                    hourly, hourly_source = [], source
             four_hour = four_hour_from_hourly(hourly) if hourly else []
+            enriched_daily = enrich(daily)
             result[clean] = {
                 "ticker": clean,
                 "source": source,
                 "intradaySource": hourly_source,
-                "daily": enrich(daily),
+                "intradayLoaded": include_intraday,
+                "daily": enriched_daily,
                 "weekly": enrich(weekly),
                 "hourly": enrich(hourly) if hourly else [],
                 "fourHour": enrich(four_hour) if four_hour else [],
-                "raw": enrich(daily)[-raw_days:],
+                "raw": enriched_daily[-raw_days:],
             }
         except (HTTPError, URLError, TimeoutError, ValueError) as exc:
             result[clean] = {"ticker": clean, "error": str(exc), "daily": [], "weekly": [], "raw": []}
@@ -441,7 +445,8 @@ class Handler(SimpleHTTPRequestHandler):
         start = params.get("start", [days_ago_iso(365 * 3)])[0]
         end = params.get("end", [today_iso()])[0]
         raw_days = int(params.get("rawDays", ["30"])[0])
-        payload = fetch_payload(tickers, start, end, raw_days)
+        include_intraday = params.get("intraday", ["1"])[0] != "0"
+        payload = fetch_payload(tickers, start, end, raw_days, include_intraday)
         body = json.dumps({"start": start, "end": end, "data": payload}, allow_nan=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")

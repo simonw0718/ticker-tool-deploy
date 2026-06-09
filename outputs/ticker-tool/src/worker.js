@@ -69,16 +69,19 @@ async function handleFetch(url) {
   const start = url.searchParams.get("start") || daysAgoIso(365 * 3);
   const end = url.searchParams.get("end") || todayIso();
   const rawDays = Number(url.searchParams.get("rawDays") || 30);
+  const includeIntraday = url.searchParams.get("intraday") !== "0";
   const data = {};
   for (const ticker of tickers) {
     try {
       const daily = await fetchYahoo(ticker, start, end, "1d");
       const weekly = weeklyFromDaily(daily.rows);
       let hourly = { rows: [], source: daily.source };
-      try {
-        hourly = await fetchYahoo(ticker, start, end, "1h");
-      } catch {
-        hourly = { rows: [], source: daily.source };
+      if (includeIntraday) {
+        try {
+          hourly = await fetchYahoo(ticker, start, end, "1h");
+        } catch {
+          hourly = { rows: [], source: daily.source };
+        }
       }
       const fourHour = hourly.rows.length ? fourHourFromHourly(hourly.rows) : [];
       const enrichedDaily = enrich(daily.rows);
@@ -86,6 +89,7 @@ async function handleFetch(url) {
         ticker,
         source: daily.source,
         intradaySource: hourly.source,
+        intradayLoaded: includeIntraday,
         daily: enrichedDaily,
         weekly: enrich(weekly),
         hourly: hourly.rows.length ? enrich(hourly.rows) : [],
