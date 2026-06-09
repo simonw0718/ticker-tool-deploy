@@ -7,19 +7,29 @@
     <link rel="stylesheet" href="/records.css" />
   </head>
   <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-4 4 2 4-7"/></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V7a2 2 0 0 1 2-2h8"/></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M18.5 10A7 7 0 0 0 6.8 6.8L4 12"/><path d="M5.5 14A7 7 0 0 0 17.2 17.2L20 12"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="icon-export" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 8 4-4 4 4"/><path d="M5 15v4h14v-4"/></symbol>
+      <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2-5"/><path d="M5 5v5h5"/></symbol>
+      <symbol id="icon-template" viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M14 4v4h4"/><path d="M9 13h6M9 16h4"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M8 10v9h8v-9"/></symbol>
+    </svg>
     <header class="topbar">
       <div>
         <h1 contenteditable="true" data-field="pageTitle">Trading Records</h1>
         <p contenteditable="true" data-field="pageNote">Position plan, trade records, and add timing.</p>
       </div>
       <nav>
-        <a href="/">Chart Tool</a>
-        <button id="copyRecordsBtn">Copy</button>
-        <button id="refreshPricesBtn">Refresh Prices</button>
-        <button id="addAccountBtn">Add Account</button>
-        <button id="addTradeBtn">Add Trade Row</button>
-        <button id="exportBtn">Export JSON</button>
-        <button id="resetBtn">Reset</button>
+        <a class="icon-button" href="/"><svg class="icon"><use href="#icon-chart"></use></svg><span>Chart Tool</span></a>
+        <button id="copyRecordsBtn" class="icon-button"><svg class="icon"><use href="#icon-copy"></use></svg><span>Copy</span></button>
+        <button id="refreshPricesBtn" class="icon-button"><svg class="icon"><use href="#icon-refresh"></use></svg><span>Refresh Prices</span></button>
+        <button id="addAccountBtn" class="icon-button"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Account</span></button>
+        <button id="addTradeBtn" class="icon-button"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Trade Row</span></button>
+        <button id="exportBtn" class="icon-button"><svg class="icon"><use href="#icon-export"></use></svg><span>Export JSON</span></button>
+        <button id="resetBtn" class="icon-button"><svg class="icon"><use href="#icon-reset"></use></svg><span>Reset</span></button>
       </nav>
     </header>
 
@@ -28,7 +38,7 @@
         <div class="section-head">
           <h2>Daily Watch Add / S/L</h2>
           <div class="row-actions">
-            <button id="copyWatchTemplateBtn" type="button">Copy Template</button>
+            <button id="copyWatchTemplateBtn" class="icon-button" type="button"><svg class="icon"><use href="#icon-template"></use></svg><span>Copy Template</span></button>
           </div>
         </div>
         <textarea id="dailyWatchText" spellcheck="false" placeholder="Paste daily watch add / S/L reminders here."></textarea>
@@ -41,8 +51,8 @@
         <div class="section-head">
           <h2 contenteditable="true" data-role="account-title"></h2>
           <div class="row-actions">
-            <button data-action="add-row">Add Row</button>
-            <button data-action="delete-account">Delete</button>
+            <button class="icon-button" data-action="add-row"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Row</span></button>
+            <button class="icon-button danger" data-action="delete-account"><svg class="icon"><use href="#icon-trash"></use></svg><span>Delete</span></button>
           </div>
         </div>
         <div class="record-table-wrap">
@@ -71,8 +81,8 @@
         <div class="section-head">
           <h2 contenteditable="true" data-role="trade-title"></h2>
           <div class="row-actions">
-            <button data-action="add-trade-row">Add Row</button>
-            <button data-action="delete-trade-section">Delete</button>
+            <button class="icon-button" data-action="add-trade-row"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Row</span></button>
+            <button class="icon-button danger" data-action="delete-trade-section"><svg class="icon"><use href="#icon-trash"></use></svg><span>Delete</span></button>
           </div>
         </div>
         <div class="record-table-wrap">

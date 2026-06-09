@@ -23,6 +23,28 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+.icon-sprite {
+  display: none;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 button,
 input,
 textarea {
@@ -62,10 +84,9 @@ textarea,
 }
 
 .nav-link {
-  display: block;
+  display: flex;
   margin: 0 0 18px;
   color: var(--text);
-  text-align: center;
   text-decoration: none;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -163,8 +184,7 @@ button:hover {
 }
 
 .file span {
-  display: block;
-  text-align: center;
+  display: flex;
   border: 1px dashed var(--line);
   border-radius: 6px;
   padding: 10px 12px;
@@ -173,10 +193,18 @@ button:hover {
 }
 
 .status {
-  min-height: 24px;
+  min-height: 28px;
   margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #0b0f13;
+  padding: 4px 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .workspace {

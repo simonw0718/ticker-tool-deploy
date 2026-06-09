@@ -7,6 +7,14 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-records" viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M14 4v4h4"/><path d="M8 12h8M8 16h8"/></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V7a2 2 0 0 1 2-2h8"/></symbol>
+      <symbol id="icon-panels" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="1"/><rect x="4" y="14" width="7" height="5" rx="1"/><rect x="13" y="14" width="7" height="5" rx="1"/></symbol>
+      <symbol id="icon-table" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16M9 5v14M15 5v14"/></symbol>
+    </svg>
     <main class="app">
       <aside class="panel">
         <div class="brand">
@@ -15,7 +23,7 @@
             <p>Daily / Weekly charts and raw OHLCV</p>
           </div>
         </div>
-        <a class="nav-link" href="/records.html">Records</a>
+        <a class="nav-link icon-button" href="/records.html"><svg class="icon"><use href="#icon-records"></use></svg><span>Records</span></a>
 
         <label class="field">
           <span>TICKERS</span>
@@ -48,10 +56,10 @@ QQQ</textarea>
           <input id="rawDays" type="number" min="10" max="500" value="80" />
         </label>
 
-        <button id="fetchBtn" class="primary">Fetch Data</button>
+        <button id="fetchBtn" class="primary icon-button"><svg class="icon"><use href="#icon-search"></use></svg><span>Fetch Data</span></button>
         <label class="file">
           <input id="csvFile" type="file" accept=".csv" multiple />
-          <span>Import CSV fallback</span>
+          <span class="icon-button"><svg class="icon"><use href="#icon-upload"></use></svg><span>Import CSV</span></span>
         </label>
         <div id="status" class="status">Ready</div>
       </aside>
@@ -68,9 +76,9 @@ QQQ</textarea>
               <button id="hourlyBtn">1H</button>
               <button id="fourHourBtn">4H</button>
             </div>
-            <button id="copyChartBtn">Copy Chart</button>
-            <button id="copyBundleBtn">Copy Full Page</button>
-            <button id="downloadCsvBtn">CSV</button>
+            <button id="copyChartBtn" class="icon-button"><svg class="icon"><use href="#icon-copy"></use></svg><span>Copy Chart</span></button>
+            <button id="copyBundleBtn" class="icon-button"><svg class="icon"><use href="#icon-panels"></use></svg><span>Copy Full Page</span></button>
+            <button id="downloadCsvBtn" class="icon-button"><svg class="icon"><use href="#icon-table"></use></svg><span>CSV</span></button>
           </div>
         </header>
 

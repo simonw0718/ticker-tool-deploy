@@ -184,11 +184,11 @@ function renderEditableRow(kind, sectionId, row, rowIndex, columnCount) {
   }
   const action = document.createElement("td");
   const button = document.createElement("button");
-  button.className = "delete-row";
+  button.className = "delete-row icon-button danger";
   button.dataset.action = kind === "trade" ? "delete-trade-row" : "delete-row";
   button.dataset.sectionId = sectionId;
   button.dataset.rowIndex = rowIndex;
-  button.textContent = "Delete";
+  button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg><span>Delete</span>`;
   action.appendChild(button);
   tr.appendChild(action);
   return tr;
@@ -235,11 +235,11 @@ function renderAccountRow(accountId, row, rowIndex) {
   });
   const action = document.createElement("td");
   const button = document.createElement("button");
-  button.className = "delete-row";
+  button.className = "delete-row icon-button danger";
   button.dataset.action = "delete-row";
   button.dataset.sectionId = accountId;
   button.dataset.rowIndex = rowIndex;
-  button.textContent = "Delete";
+  button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg><span>Delete</span>`;
   action.appendChild(button);
   tr.appendChild(action);
   updateComputedAccountRow(tr);
@@ -617,13 +617,14 @@ document.addEventListener("paste", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  const action = event.target.dataset.action;
+  const actionButton = event.target.closest("[data-action]");
+  const action = actionButton?.dataset.action;
   if (!action) return;
-  const accountNode = event.target.closest(".account");
-  const tradeNode = event.target.closest(".trade-record");
+  const accountNode = actionButton.closest(".account");
+  const tradeNode = actionButton.closest(".trade-record");
   if (action === "add-row") addAccountRow(accountNode.dataset.accountId);
   if (action === "delete-row") {
-    findAccount(event.target.dataset.sectionId).rows.splice(Number(event.target.dataset.rowIndex), 1);
+    findAccount(actionButton.dataset.sectionId).rows.splice(Number(actionButton.dataset.rowIndex), 1);
     saveRecords();
     render();
     refreshPrices();
@@ -636,7 +637,7 @@ document.addEventListener("click", (event) => {
   }
   if (action === "add-trade-row") addTradeRow(tradeNode.dataset.tradeSectionId);
   if (action === "delete-trade-row") {
-    findTradeSection(event.target.dataset.sectionId).rows.splice(Number(event.target.dataset.rowIndex), 1);
+    findTradeSection(actionButton.dataset.sectionId).rows.splice(Number(actionButton.dataset.rowIndex), 1);
     saveRecords();
     render();
   }

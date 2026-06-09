@@ -23,6 +23,28 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+.icon-sprite {
+  display: none;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 button,
 input,
 textarea {
@@ -86,6 +108,10 @@ button,
   padding: 7px 11px;
   text-decoration: none;
   cursor: pointer;
+}
+
+.danger {
+  color: #ff9aa3;
 }
 
 .topbar a:hover,
@@ -230,6 +256,15 @@ button:hover,
   min-height: 28px;
   padding: 4px 8px;
   color: var(--muted);
+}
+
+.delete-row.danger {
+  color: #ff9aa3;
+}
+
+.delete-row .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .chart-grid {
