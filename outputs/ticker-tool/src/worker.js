@@ -189,11 +189,13 @@ async function fetchDaily(ticker, start, end) {
     if (!shouldTryStooqRefresh(yahoo.rows, end)) return yahoo;
   } catch {
   }
-  try {
-    const hourly = await fetchYahoo(ticker, start, end, "1h");
-    const merged = mergeDailyRows(yahoo?.rows || [], dailyFromIntraday(hourly.rows, yahoo?.rows.at(-1)?.date || "", end));
-    if (merged.length && (!yahoo || merged.at(-1)?.date > yahoo.rows.at(-1)?.date)) return { rows: merged, source: yahoo ? "yahoo+1h" : "yahoo-1h" };
-  } catch {
+  if (shouldUseIntradayDailyFallback(end)) {
+    try {
+      const hourly = await fetchYahoo(ticker, start, end, "1h");
+      const merged = mergeDailyRows(yahoo?.rows || [], dailyFromIntraday(hourly.rows, yahoo?.rows.at(-1)?.date || "", end));
+      if (merged.length && (!yahoo || merged.at(-1)?.date > yahoo.rows.at(-1)?.date)) return { rows: merged, source: yahoo ? "yahoo+1h" : "yahoo-1h" };
+    } catch {
+    }
   }
   try {
     const stooq = await fetchStooq(ticker, start, end);
@@ -208,6 +210,14 @@ function shouldTryStooqRefresh(rows, end) {
   if (!rows.length) return true;
   const last = rows[rows.length - 1]?.date;
   return Boolean(end && last && end > last);
+}
+
+function shouldUseIntradayDailyFallback(end) {
+  if (!end) return false;
+  const endDate = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(endDate.getTime())) return false;
+  const ageDays = (Date.now() - endDate.getTime()) / 86400000;
+  return ageDays <= 7;
 }
 
 function compareLastDate(leftRows, rightRows) {

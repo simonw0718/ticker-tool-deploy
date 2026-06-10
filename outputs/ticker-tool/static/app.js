@@ -337,7 +337,7 @@ async function fetchTickersWithProgress(tickers, onProgress) {
   const results = {};
   let nextIndex = 0;
   let done = 0;
-  const concurrency = Math.min(2, tickers.length);
+  const concurrency = 1;
   async function worker() {
     while (nextIndex < tickers.length) {
       const ticker = tickers[nextIndex];
@@ -345,6 +345,7 @@ async function fetchTickersWithProgress(tickers, onProgress) {
       results[ticker] = await fetchOneTicker(ticker, (retryTicker) => onProgress(done, tickers.length, retryTicker, true));
       done += 1;
       onProgress(done, tickers.length, ticker);
+      if (nextIndex < tickers.length) await delay(250);
     }
   }
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
@@ -371,7 +372,7 @@ async function fetchOneTicker(ticker, onRetry, includeIntraday = false) {
     }
     if (attempt < 2) {
       onRetry?.(ticker);
-      await delay(700 * (attempt + 1));
+      await delay(1200 * (attempt + 1));
     }
   }
   return { ticker, error: lastError, daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };

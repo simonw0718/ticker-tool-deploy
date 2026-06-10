@@ -258,6 +258,16 @@ def should_try_stooq_refresh(rows: list[dict], end: str) -> bool:
     return bool(end and rows[-1].get("date") and end > rows[-1]["date"])
 
 
+def should_use_intraday_daily_fallback(end: str) -> bool:
+    if not end:
+        return False
+    try:
+        end_date = datetime.strptime(end, "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    return (date.today() - end_date).days <= 7
+
+
 def merge_daily_rows(primary_rows: list[dict], fallback_rows: list[dict]) -> list[dict]:
     by_date = {row["date"]: row for row in primary_rows}
     for row in fallback_rows:
@@ -300,13 +310,14 @@ def fetch_daily(ticker: str, start: str, end: str) -> tuple[list[dict], str]:
     except Exception:
         yahoo_source = "yahoo"
 
-    try:
-        hourly_rows, _ = fetch_yahoo(ticker, start, end, "1h")
-        merged_rows = merge_daily_rows(yahoo_rows or [], daily_from_intraday(hourly_rows, yahoo_rows[-1]["date"] if yahoo_rows else "", end))
-        if merged_rows and (not yahoo_rows or merged_rows[-1]["date"] > yahoo_rows[-1]["date"]):
-            return merged_rows, "yahoo+1h" if yahoo_rows else "yahoo-1h"
-    except Exception:
-        pass
+    if should_use_intraday_daily_fallback(end):
+        try:
+            hourly_rows, _ = fetch_yahoo(ticker, start, end, "1h")
+            merged_rows = merge_daily_rows(yahoo_rows or [], daily_from_intraday(hourly_rows, yahoo_rows[-1]["date"] if yahoo_rows else "", end))
+            if merged_rows and (not yahoo_rows or merged_rows[-1]["date"] > yahoo_rows[-1]["date"]):
+                return merged_rows, "yahoo+1h" if yahoo_rows else "yahoo-1h"
+        except Exception:
+            pass
 
     try:
         body, stooq_source = fetch_stooq_csv(ticker, start, end)
