@@ -15,11 +15,17 @@ const state = {
     keyWatch: "AMZN\nGOOGL\nMETA\nAMD\nAVGO",
     watchlist: "PLTR\nCRWD\nNET\nSNOW\nSHOP",
   },
+  tickerListLabels: {
+    own: "Own",
+    keyWatch: "Key Watch",
+    watchlist: "Watchlist",
+  },
 };
 
 const els = {
   tickers: document.querySelector("#tickers"),
   listTabs: document.querySelector("#listTabs"),
+  addListBtn: document.querySelector("#addListBtn"),
   start: document.querySelector("#start"),
   end: document.querySelector("#end"),
   rawDays: document.querySelector("#rawDays"),
@@ -105,6 +111,7 @@ async function loadTickerLists() {
   try {
     const saved = JSON.parse(localStorage.getItem(LIST_STORAGE_KEY) || "{}");
     state.tickerLists = { ...state.tickerLists, ...saved.tickerLists };
+    state.tickerListLabels = { ...state.tickerListLabels, ...saved.tickerListLabels };
     state.activeList = saved.activeList || state.activeList;
     savedOwn = saved.tickerLists?.own || "";
   } catch {
@@ -113,9 +120,11 @@ async function loadTickerLists() {
   const serverSaved = await loadServerStore("tickerLists");
   if (serverSaved) {
     state.tickerLists = { ...state.tickerLists, ...serverSaved.tickerLists };
+    state.tickerListLabels = { ...state.tickerListLabels, ...serverSaved.tickerListLabels };
     state.activeList = serverSaved.activeList || state.activeList;
     savedOwn = serverSaved.tickerLists?.own || savedOwn;
   }
+  if (!state.tickerLists[state.activeList]) state.activeList = "own";
   await hydrateOwnListFromRecords(savedOwn);
   els.tickers.value = state.tickerLists[state.activeList] || "";
   renderListTabs();
@@ -159,18 +168,20 @@ function saveTickerLists() {
     JSON.stringify({
       activeList: state.activeList,
       tickerLists: state.tickerLists,
+      tickerListLabels: state.tickerListLabels,
     })
   );
   saveServerStore("tickerLists", {
     activeList: state.activeList,
     tickerLists: state.tickerLists,
+    tickerListLabels: state.tickerListLabels,
   });
 }
 
 function renderListTabs() {
-  [...els.listTabs.querySelectorAll("button")].forEach((button) => {
-    button.classList.toggle("active", button.dataset.list === state.activeList);
-  });
+  els.listTabs.innerHTML = Object.keys(state.tickerLists)
+    .map((key) => `<button type="button" data-list="${escapeAttr(key)}" class="${key === state.activeList ? "active" : ""}">${escapeHtml(labelForList(key))}</button>`)
+    .join("");
 }
 
 function syncActiveListFromInput() {
@@ -179,6 +190,7 @@ function syncActiveListFromInput() {
 }
 
 function switchTickerList(nextList) {
+  if (!state.tickerLists[nextList]) return;
   syncActiveListFromInput();
   state.activeList = nextList;
   els.tickers.value = state.tickerLists[state.activeList] || "";
@@ -188,11 +200,48 @@ function switchTickerList(nextList) {
 }
 
 function labelForList(list) {
-  return {
-    own: "Own",
-    keyWatch: "Key Watch",
-    watchlist: "Watchlist",
-  }[list] || list;
+  return state.tickerListLabels[list] || list;
+}
+
+function addTickerList() {
+  syncActiveListFromInput();
+  const rawName = window.prompt("New ticker group name", "New Group");
+  const label = String(rawName || "").trim();
+  if (!label) return;
+  const key = uniqueListKey(label);
+  state.tickerLists[key] = "";
+  state.tickerListLabels[key] = label;
+  state.activeList = key;
+  els.tickers.value = "";
+  renderListTabs();
+  saveTickerLists();
+  els.tickers.focus();
+  els.status.textContent = `Added ${label}`;
+}
+
+function uniqueListKey(label) {
+  const base =
+    label
+      .trim()
+      .replace(/([a-z])([A-Z])/g, "$1-$2")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "group";
+  let key = `custom-${base}`;
+  let index = 2;
+  while (state.tickerLists[key]) {
+    key = `custom-${base}-${index}`;
+    index += 1;
+  }
+  return key;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
 }
 
 const colors = {
@@ -1219,6 +1268,7 @@ function downloadCsv() {
 
 els.fetchBtn.onclick = fetchData;
 els.tickers.addEventListener("input", syncActiveListFromInput);
+els.addListBtn.onclick = addTickerList;
 els.listTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-list]");
   if (!button) return;

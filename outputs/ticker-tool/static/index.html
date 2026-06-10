@@ -14,6 +14,7 @@
       <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V7a2 2 0 0 1 2-2h8"/></symbol>
       <symbol id="icon-panels" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="1"/><rect x="4" y="14" width="7" height="5" rx="1"/><rect x="13" y="14" width="7" height="5" rx="1"/></symbol>
       <symbol id="icon-table" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16M9 5v14M15 5v14"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     </svg>
     <main class="app">
       <aside class="panel">
@@ -32,6 +33,7 @@
             <button type="button" data-list="keyWatch">Key Watch</button>
             <button type="button" data-list="watchlist">Watchlist</button>
           </div>
+          <button id="addListBtn" type="button" class="add-list icon-button"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Group</span></button>
           <textarea id="tickers" spellcheck="false">AAPL
 MSFT
 NVDA

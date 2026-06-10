@@ -127,22 +127,40 @@ textarea {
 }
 
 .list-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .list-tabs button {
+  flex: 1 1 calc(33.333% - 6px);
   min-width: 0;
   padding: 7px 6px;
   font-size: 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .list-tabs button.active {
   background: #e8edf2;
   color: #070809;
   border-color: #e8edf2;
+}
+
+.add-list {
+  min-height: 36px;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--muted);
+  background: #101317;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.add-list:hover {
+  color: var(--text);
+  background: #151a20;
 }
 
 .grid2 {
