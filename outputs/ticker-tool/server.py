@@ -252,6 +252,75 @@ def parse_ohlcv(body: str) -> list[dict]:
     return rows
 
 
+def should_try_stooq_refresh(rows: list[dict], end: str) -> bool:
+    if not rows:
+        return True
+    return bool(end and rows[-1].get("date") and end > rows[-1]["date"])
+
+
+def merge_daily_rows(primary_rows: list[dict], fallback_rows: list[dict]) -> list[dict]:
+    by_date = {row["date"]: row for row in primary_rows}
+    for row in fallback_rows:
+        by_date[row["date"]] = {**by_date.get(row["date"], {}), **row}
+    return sorted(by_date.values(), key=lambda item: item["date"])
+
+
+def daily_from_intraday(rows: list[dict], after_date: str = "", end: str = "") -> list[dict]:
+    by_date: dict[str, list[dict]] = {}
+    for row in rows:
+        row_date = row.get("sessionDate") or row["date"].split(" ")[0]
+        if after_date and row_date <= after_date:
+            continue
+        if end and row_date > end:
+            continue
+        by_date.setdefault(row_date, []).append(row)
+
+    result: list[dict] = []
+    for row_date, day_rows in by_date.items():
+        day_rows.sort(key=lambda item: item.get("exchangeTime") or item["date"])
+        result.append(
+            {
+                "date": row_date,
+                "open": day_rows[0]["open"],
+                "high": max(item["high"] for item in day_rows),
+                "low": min(item["low"] for item in day_rows),
+                "close": day_rows[-1]["close"],
+                "volume": sum(item["volume"] for item in day_rows),
+            }
+        )
+    return sorted(result, key=lambda item: item["date"])
+
+
+def fetch_daily(ticker: str, start: str, end: str) -> tuple[list[dict], str]:
+    yahoo_rows: list[dict] | None = None
+    try:
+        yahoo_rows, yahoo_source = fetch_yahoo(ticker, start, end)
+        if not should_try_stooq_refresh(yahoo_rows, end):
+            return yahoo_rows, yahoo_source
+    except Exception:
+        yahoo_source = "yahoo"
+
+    try:
+        hourly_rows, _ = fetch_yahoo(ticker, start, end, "1h")
+        merged_rows = merge_daily_rows(yahoo_rows or [], daily_from_intraday(hourly_rows, yahoo_rows[-1]["date"] if yahoo_rows else "", end))
+        if merged_rows and (not yahoo_rows or merged_rows[-1]["date"] > yahoo_rows[-1]["date"]):
+            return merged_rows, "yahoo+1h" if yahoo_rows else "yahoo-1h"
+    except Exception:
+        pass
+
+    try:
+        body, stooq_source = fetch_stooq_csv(ticker, start, end)
+        stooq_rows = parse_ohlcv(body)
+        if stooq_rows and (not yahoo_rows or stooq_rows[-1]["date"] > yahoo_rows[-1]["date"]):
+            return merge_daily_rows(yahoo_rows or [], stooq_rows), f"{yahoo_source}+{stooq_source}" if yahoo_rows else stooq_source
+    except Exception:
+        pass
+
+    if yahoo_rows:
+        return yahoo_rows, yahoo_source
+    raise ValueError("No rows returned")
+
+
 def sma(rows: list[dict], period: int, field: str = "close") -> list[dict]:
     values: list[dict] = []
     total = 0.0
@@ -353,13 +422,7 @@ def fetch_payload(tickers: list[str], start: str, end: str, raw_days: int, inclu
         if not clean:
             continue
         try:
-            try:
-                daily, source = fetch_yahoo(clean, start, end)
-            except Exception:
-                body, source = fetch_stooq_csv(clean, start, end)
-                daily = parse_ohlcv(body)
-                if not daily:
-                    raise ValueError("No rows returned")
+            daily, source = fetch_daily(clean, start, end)
             weekly = weekly_from_daily(daily)
             hourly, hourly_source = [], source
             if include_intraday:

@@ -2,6 +2,7 @@ const DEFAULT_TICKERS = ["AAPL", "MSFT", "NVDA", "TSLA", "SPY", "QQQ"];
 const STORE_KEYS = new Set(["records", "tickerLists"]);
 const DISPLAY_TIMEZONE = "Asia/Taipei";
 const EXCHANGE_TIMEZONE = "America/New_York";
+const STOOQ_ORIGIN = "https://stooq.com";
 
 export default {
   async fetch(request, env) {
@@ -73,7 +74,7 @@ async function handleFetch(url) {
   const data = {};
   for (const ticker of tickers) {
     try {
-      const daily = await fetchYahoo(ticker, start, end, "1d");
+      const daily = await fetchDaily(ticker, start, end);
       const weekly = weeklyFromDaily(daily.rows);
       let hourly = { rows: [], source: daily.source };
       if (includeIntraday) {
@@ -179,6 +180,144 @@ async function fetchYahoo(ticker, start, end, interval = "1d") {
   rows.sort((a, b) => a.date.localeCompare(b.date));
   if (!rows.length) throw new Error("Yahoo returned no usable OHLCV rows");
   return { rows, source: "yahoo" };
+}
+
+async function fetchDaily(ticker, start, end) {
+  let yahoo = null;
+  try {
+    yahoo = await fetchYahoo(ticker, start, end, "1d");
+    if (!shouldTryStooqRefresh(yahoo.rows, end)) return yahoo;
+  } catch {
+  }
+  try {
+    const hourly = await fetchYahoo(ticker, start, end, "1h");
+    const merged = mergeDailyRows(yahoo?.rows || [], dailyFromIntraday(hourly.rows, yahoo?.rows.at(-1)?.date || "", end));
+    if (merged.length && (!yahoo || merged.at(-1)?.date > yahoo.rows.at(-1)?.date)) return { rows: merged, source: yahoo ? "yahoo+1h" : "yahoo-1h" };
+  } catch {
+  }
+  try {
+    const stooq = await fetchStooq(ticker, start, end);
+    if (!yahoo || compareLastDate(stooq.rows, yahoo.rows) > 0) return { rows: mergeDailyRows(yahoo?.rows || [], stooq.rows), source: yahoo ? "yahoo+stooq" : stooq.source };
+  } catch {
+  }
+  if (yahoo) return yahoo;
+  throw new Error("No rows returned");
+}
+
+function shouldTryStooqRefresh(rows, end) {
+  if (!rows.length) return true;
+  const last = rows[rows.length - 1]?.date;
+  return Boolean(end && last && end > last);
+}
+
+function compareLastDate(leftRows, rightRows) {
+  const left = leftRows[leftRows.length - 1]?.date || "";
+  const right = rightRows[rightRows.length - 1]?.date || "";
+  return left.localeCompare(right);
+}
+
+function mergeDailyRows(primaryRows, fallbackRows) {
+  const byDate = new Map(primaryRows.map((row) => [row.date, row]));
+  fallbackRows.forEach((row) => byDate.set(row.date, { ...byDate.get(row.date), ...row }));
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dailyFromIntraday(rows, afterDate = "", end = "") {
+  const byDate = new Map();
+  rows.forEach((row) => {
+    const date = row.sessionDate || row.date.split(" ")[0];
+    if ((afterDate && date <= afterDate) || (end && date > end)) return;
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(row);
+  });
+  return [...byDate.entries()].map(([date, dayRows]) => {
+    dayRows.sort((a, b) => (a.exchangeTime || a.date).localeCompare(b.exchangeTime || b.date));
+    return {
+      date,
+      open: dayRows[0].open,
+      high: Math.max(...dayRows.map((row) => row.high)),
+      low: Math.min(...dayRows.map((row) => row.low)),
+      close: dayRows[dayRows.length - 1].close,
+      volume: dayRows.reduce((sum, row) => sum + row.volume, 0),
+    };
+  }).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function fetchStooq(ticker, start, end) {
+  const symbol = `${normalizeTicker(ticker).toLowerCase()}.us`;
+  const params = new URLSearchParams({
+    s: symbol,
+    d1: start.replaceAll("-", ""),
+    d2: end.replaceAll("-", ""),
+    i: "d",
+  });
+  const body = await stooqGet(`${STOOQ_ORIGIN}/q/d/l/?${params}`);
+  const rows = parseStooqCsv(body);
+  if (!rows.length) throw new Error("Stooq returned no usable OHLCV rows");
+  return { rows, source: "stooq" };
+}
+
+async function stooqGet(url) {
+  const response = await fetch(url, { headers: stooqHeaders() });
+  let body = await response.text();
+  if (!body.includes("__verify")) return body;
+
+  const challenge = body.match(/const c="([^"]+)",d=(\d+)/);
+  if (!challenge) return body;
+  const token = challenge[1];
+  const difficulty = Number(challenge[2]);
+  const nonce = await solveStooqChallenge(token, difficulty);
+  const verify = await fetch(`${STOOQ_ORIGIN}/__verify`, {
+    method: "POST",
+    headers: {
+      ...stooqHeaders(),
+      "content-type": "application/x-www-form-urlencoded",
+      origin: STOOQ_ORIGIN,
+      referer: url,
+    },
+    body: new URLSearchParams({ c: token, n: String(nonce) }),
+  });
+  const cookie = verify.headers.get("set-cookie")?.split(";")[0];
+  const retryHeaders = cookie ? { ...stooqHeaders(), cookie } : stooqHeaders();
+  body = await (await fetch(url, { headers: retryHeaders })).text();
+  return body;
+}
+
+function stooqHeaders() {
+  return { "user-agent": "Mozilla/5.0 ticker-tool-cloudflare/1.0" };
+}
+
+async function solveStooqChallenge(token, difficulty) {
+  const prefix = "0".repeat(difficulty);
+  const encoder = new TextEncoder();
+  for (let nonce = 0; ; nonce += 1) {
+    const hash = await crypto.subtle.digest("SHA-256", encoder.encode(`${token}${nonce}`));
+    const hex = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    if (hex.startsWith(prefix)) return nonce;
+  }
+}
+
+function parseStooqCsv(body) {
+  if (!body || body.trimStart().startsWith("<")) return [];
+  const lines = body.trim().split(/\r?\n/);
+  const headers = lines.shift()?.split(",") || [];
+  const rows = [];
+  lines.forEach((line) => {
+    const values = line.split(",");
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+    if (!row.Date || row.Date === "No data") return;
+    const parsed = {
+      date: row.Date,
+      open: Number(row.Open),
+      high: Number(row.High),
+      low: Number(row.Low),
+      close: Number(row.Close),
+      volume: Number(row.Volume || 0),
+    };
+    if ([parsed.open, parsed.high, parsed.low, parsed.close].some((value) => !Number.isFinite(value))) return;
+    rows.push(parsed);
+  });
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 async function fetchYahooJson(url) {
