@@ -544,19 +544,27 @@ function getTableRows(item, interval, limit = Number(els.rawDays.value || 30)) {
 
 async function ensureIntradayLoaded(ticker = state.activeTicker) {
   const item = state.data[ticker];
-  if (!item || item.error || item.intradayLoaded || item.intradayLoading) return;
+  if (!item || item.error || item.intradayLoaded) return;
+  if (item.intradayPromise) {
+    await item.intradayPromise;
+    return;
+  }
   item.intradayLoading = true;
   els.status.textContent = `Loading 1H / 4H for ${ticker}...`;
-  try {
+  item.intradayPromise = (async () => {
     const result = await fetchOneTicker(ticker, null, true);
     if (result?.daily?.length) {
-      state.data[ticker] = { ...item, ...result, intradayLoaded: true, intradayLoading: false };
+      state.data[ticker] = { ...item, ...result, intradayLoaded: true, intradayLoading: false, intradayPromise: null };
       els.status.textContent = `Loaded 1H / 4H for ${ticker}`;
       return;
     }
     item.warning = result?.error || "Intraday data unavailable";
+  })();
+  try {
+    await item.intradayPromise;
   } finally {
     item.intradayLoading = false;
+    item.intradayPromise = null;
   }
 }
 
