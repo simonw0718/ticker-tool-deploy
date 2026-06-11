@@ -7,6 +7,11 @@ const state = {
   panDrag: null,
   touchDrag: null,
   touchPinch: null,
+  crosshair: null,
+  crosshairLocked: false,
+  chartLayout: null,
+  chartPointerDown: null,
+  chartPointerDragged: false,
   xVisible: 180,
   xOffset: 0,
   activeGroupId: "own",
@@ -835,6 +840,9 @@ function resetChartView() {
   state.panDrag = null;
   state.touchDrag = null;
   state.touchPinch = null;
+  state.crosshair = null;
+  state.crosshairLocked = false;
+  state.chartLayout = null;
 }
 
 function getVisibleRows(rows) {
@@ -935,6 +943,7 @@ function drawChart(rows, ticker, interval) {
   const visibleMacd = indicators.macd ? macdAll.slice(-visible.length) : [];
   const macdMax = indicators.macd ? Math.max(...visibleMacd.flatMap((row) => [Math.abs(row.macd || 0), Math.abs(row.signal || 0), Math.abs(row.hist || 0)]), 0.01) : 1;
   const yMacd = (value) => panelTops.macd + 60 - (value / macdMax) * 50;
+  state.chartLayout = { visible, pad, priceTop, priceH, volTop, volH, plotW, pMin, pMax, xFor, yPrice, width: w, height: h };
 
   drawGrid(ctx, pad.left, priceTop, plotW, priceH, 6, 6);
   drawGrid(ctx, pad.left, volTop, plotW, volH, 2, 6);
@@ -1032,6 +1041,7 @@ function drawChart(rows, ticker, interval) {
   ctx.textAlign = "right";
   ctx.fillText(`Y ${state.yScale.toFixed(2)}x · ${visible.length} bars`, w - 10, 16);
   ctx.textAlign = "left";
+  drawCrosshairOverlay(ctx, state.chartLayout);
 }
 
 function drawGrid(ctx, x, y, w, h, rows, cols) {
@@ -1074,6 +1084,102 @@ function drawLine(ctx, rows, getter, xFor, yFor, color, width) {
     }
   });
   ctx.stroke();
+}
+
+function updateCrosshairFromPoint(clientX, clientY, lock = false) {
+  const layout = state.chartLayout;
+  const rows = layout?.visible || [];
+  if (!rows.length) return;
+  const rect = els.chart.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  const inPlotX = x >= layout.pad.left && x <= layout.pad.left + layout.plotW;
+  const inChartY = y >= layout.priceTop && y <= layout.volTop + layout.volH;
+  if (!inPlotX || !inChartY) {
+    if (!state.crosshairLocked) {
+      state.crosshair = null;
+      render();
+    }
+    return;
+  }
+  const index = clamp(Math.round(((x - layout.pad.left) / layout.plotW) * rows.length - 0.5), 0, rows.length - 1);
+  const price = layout.pMax - ((clamp(y, layout.priceTop, layout.priceTop + layout.priceH) - layout.priceTop) / layout.priceH) * (layout.pMax - layout.pMin);
+  state.crosshair = { index, x, y, price };
+  state.crosshairLocked = lock || state.crosshairLocked;
+  render();
+}
+
+function drawCrosshairOverlay(ctx, layout) {
+  if (!state.crosshair || !layout?.visible?.length) return;
+  const index = clamp(state.crosshair.index, 0, layout.visible.length - 1);
+  const row = layout.visible[index];
+  if (!row) return;
+  const x = layout.xFor(index);
+  const y = clamp(state.crosshair.y, layout.priceTop, layout.volTop + layout.volH);
+  const price = state.crosshair.price ?? row.close;
+  ctx.save();
+  ctx.strokeStyle = "rgba(232,237,242,0.72)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(x, layout.priceTop);
+  ctx.lineTo(x, layout.volTop + layout.volH);
+  ctx.moveTo(layout.pad.left, y);
+  ctx.lineTo(layout.pad.left + layout.plotW, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const changeColor = row.change >= 0 ? colors.up : colors.down;
+  const lines = [
+    row.date,
+    `O ${fmt(row.open)}  H ${fmt(row.high)}  L ${fmt(row.low)}  C ${fmt(row.close)}`,
+    `Change ${fmt(row.change)} (${fmt(row.changePct)}%)  Vol ${fmtVolume(row.volume)}`,
+    `SMA ${fmt(row.sma?.["20"])} / ${fmt(row.sma?.["50"])} / ${fmt(row.sma?.["100"])} / ${fmt(row.sma?.["150"])} / ${fmt(row.sma?.["200"])}`,
+    `RSI ${fmt(row.rsi14)}  Pointer ${fmt(price)}`,
+  ];
+  const macd = macdRows(layout.visible)[index];
+  if (macd) lines.push(`MACD ${fmt(macd.macd)}  Signal ${fmt(macd.signal)}  Hist ${fmt(macd.hist)}`);
+  if (state.crosshairLocked) lines.push("Locked");
+  ctx.font = "12px system-ui";
+  const boxW = Math.min(390, Math.max(...lines.map((line) => ctx.measureText(line).width)) + 22);
+  const boxH = lines.length * 19 + 18;
+  const boxX = x + boxW + 18 > layout.width ? x - boxW - 18 : x + 16;
+  const boxY = y + boxH + 14 > layout.height ? y - boxH - 14 : y + 14;
+  ctx.fillStyle = "rgba(5,7,9,0.92)";
+  ctx.strokeStyle = "rgba(232,237,242,0.2)";
+  roundRect(ctx, boxX, boxY, boxW, boxH, 7);
+  ctx.fill();
+  ctx.stroke();
+  lines.forEach((line, lineIndex) => {
+    ctx.fillStyle = lineIndex === 2 ? changeColor : line === "Locked" ? colors.rsiMa : colors.text;
+    ctx.fillText(line, boxX + 11, boxY + 20 + lineIndex * 19);
+  });
+
+  const priceText = fmt(price);
+  const priceW = ctx.measureText(priceText).width + 16;
+  ctx.fillStyle = "rgba(232,237,242,0.16)";
+  ctx.strokeStyle = "rgba(232,237,242,0.28)";
+  roundRect(ctx, layout.width - layout.pad.right + 6, y - 12, priceW, 24, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = colors.text;
+  ctx.fillText(priceText, layout.width - layout.pad.right + 14, y + 4);
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function emaNumberSeries(values, period) {
@@ -1808,6 +1914,8 @@ els.chart.addEventListener("mousedown", (event) => {
   const rect = els.chart.getBoundingClientRect();
   const rows = getRows();
   if (!rows.length) return;
+  state.chartPointerDown = { x: event.clientX, y: event.clientY };
+  state.chartPointerDragged = false;
   if (event.clientX - rect.left >= rect.width - 86) {
     state.axisDrag = { y: event.clientY, scale: state.yScale };
     els.chart.classList.add("axis-dragging");
@@ -1821,6 +1929,9 @@ els.chart.addEventListener("mousedown", (event) => {
 });
 
 window.addEventListener("mousemove", (event) => {
+  if (state.chartPointerDown && Math.hypot(event.clientX - state.chartPointerDown.x, event.clientY - state.chartPointerDown.y) > 4) {
+    state.chartPointerDragged = true;
+  }
   if (state.axisDrag) {
     const delta = state.axisDrag.y - event.clientY;
     state.yScale = clamp(state.axisDrag.scale * Math.exp(delta * 0.01), 0.45, 8);
@@ -1832,6 +1943,10 @@ window.addEventListener("mousemove", (event) => {
     const bars = Math.round(delta / state.panDrag.barWidth);
     state.xOffset = clamp(state.panDrag.offset + bars, 0, Math.max(0, rows.length - state.xVisible));
     render();
+    return;
+  }
+  if (!state.crosshairLocked && event.target === els.chart) {
+    updateCrosshairFromPoint(event.clientX, event.clientY);
   }
 });
 
@@ -1840,10 +1955,17 @@ window.addEventListener("mouseup", () => {
   state.panDrag = null;
   els.chart.classList.remove("axis-dragging");
   els.chart.classList.remove("chart-panning");
+  state.chartPointerDown = null;
   saveChartSession();
 });
 
 els.chart.addEventListener("dblclick", (event) => {
+  if (state.crosshairLocked) {
+    state.crosshairLocked = false;
+    state.crosshair = null;
+    render();
+    return;
+  }
   const rect = els.chart.getBoundingClientRect();
   if (event.clientX - rect.left >= rect.width - 86) {
     state.yScale = 1;
@@ -1851,6 +1973,26 @@ els.chart.addEventListener("dblclick", (event) => {
     state.xVisible = 180;
     state.xOffset = 0;
   }
+  render();
+});
+
+els.chart.addEventListener("click", (event) => {
+  const rect = els.chart.getBoundingClientRect();
+  if (state.chartPointerDragged || event.clientX - rect.left >= rect.width - 86) return;
+  state.crosshairLocked = false;
+  updateCrosshairFromPoint(event.clientX, event.clientY, true);
+});
+
+els.chart.addEventListener("mouseleave", () => {
+  if (state.crosshairLocked) return;
+  state.crosshair = null;
+  render();
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !state.crosshair) return;
+  state.crosshair = null;
+  state.crosshairLocked = false;
   render();
 });
 
