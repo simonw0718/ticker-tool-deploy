@@ -985,6 +985,100 @@ function drawVolumeProfile(ctx, rows, pMin, pMax, priceTop, priceH, plotLeft, pl
   ctx.restore();
 }
 
+function findPivots(rows, getter, mode = "low", span = 3) {
+  const pivots = [];
+  for (let index = span; index < rows.length - span; index += 1) {
+    const value = getter(rows[index], index);
+    if (value === null || value === undefined || Number.isNaN(value)) continue;
+    let isPivot = true;
+    for (let offset = index - span; offset <= index + span; offset += 1) {
+      if (offset === index) continue;
+      const other = getter(rows[offset], offset);
+      if (other === null || other === undefined || Number.isNaN(other)) continue;
+      if (mode === "low" ? other <= value : other >= value) {
+        isPivot = false;
+        break;
+      }
+    }
+    if (isPivot) pivots.push({ index, value });
+  }
+  return pivots;
+}
+
+function findDivergences(priceRows, indicatorRows, indicatorGetter) {
+  const minGap = 6;
+  const priceTolerance = 0.002;
+  const indicatorTolerance = 0.01;
+  const lows = findPivots(priceRows, (row) => row.low, "low");
+  const highs = findPivots(priceRows, (row) => row.high, "high");
+  const signals = [];
+
+  const scanPairs = (pivots, type) => {
+    for (let index = 1; index < pivots.length; index += 1) {
+      const previous = pivots[index - 1];
+      const current = pivots[index];
+      if (current.index - previous.index < minGap) continue;
+      const previousIndicator = indicatorGetter(indicatorRows[previous.index], previous.index);
+      const currentIndicator = indicatorGetter(indicatorRows[current.index], current.index);
+      if ([previousIndicator, currentIndicator].some((value) => value === null || value === undefined || Number.isNaN(value))) continue;
+      const priceMove = (current.value - previous.value) / Math.max(Math.abs(previous.value), 0.01);
+      const indicatorMove = currentIndicator - previousIndicator;
+      if (type === "bullish" && priceMove < -priceTolerance && indicatorMove > indicatorTolerance) {
+        signals.push({ type, previous, current, previousIndicator, currentIndicator });
+      }
+      if (type === "bearish" && priceMove > priceTolerance && indicatorMove < -indicatorTolerance) {
+        signals.push({ type, previous, current, previousIndicator, currentIndicator });
+      }
+    }
+  };
+
+  scanPairs(lows, "bullish");
+  scanPairs(highs, "bearish");
+  return signals.sort((a, b) => b.current.index - a.current.index).slice(0, 2);
+}
+
+function drawDivergenceSignals(ctx, signals, xFor, yPrice, yIndicator, label) {
+  signals.forEach((signal) => {
+    const color = signal.type === "bullish" ? colors.up : colors.down;
+    const marker = signal.type === "bullish" ? "Bull div" : "Bear div";
+    const priceY1 = yPrice(signal.previous.value);
+    const priceY2 = yPrice(signal.current.value);
+    const indicatorY1 = yIndicator(signal.previousIndicator);
+    const indicatorY2 = yIndicator(signal.currentIndicator);
+    const x1 = xFor(signal.previous.index);
+    const x2 = xFor(signal.current.index);
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(x1, priceY1);
+    ctx.lineTo(x2, priceY2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1, indicatorY1);
+    ctx.lineTo(x2, indicatorY2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const tagX = clamp(x2 + 8, 64, 1390);
+    const tagY = signal.type === "bullish" ? priceY2 + 20 : priceY2 - 20;
+    ctx.font = "800 12px system-ui";
+    const text = `${label} ${marker}`;
+    const textW = ctx.measureText(text).width + 14;
+    ctx.fillStyle = "rgba(2,3,3,0.82)";
+    ctx.fillRect(tagX, tagY - 10, textW, 20);
+    ctx.strokeStyle = color;
+    ctx.strokeRect(tagX, tagY - 10, textW, 20);
+    ctx.fillStyle = color;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, tagX + 7, tagY);
+    ctx.restore();
+  });
+}
+
 function renderTable(rows, interval = state.interval) {
   const headers = ["Date", "Open", "High", "Low", "Close", "Change", "Volume", "SMA20", "SMA50", "SMA100", "SMA150", "SMA200", "RSI14", "RSI MA"];
   els.tableTitle.textContent = `${intervalLabels[interval]} Data`;
@@ -1130,6 +1224,7 @@ function createReportChartCanvas(rows, ticker, interval) {
   if (indicators.rsi) {
     drawLine(ctx, visible, (row) => row.rsi14, xFor, yRsi, colors.rsi, 1.2);
     drawLine(ctx, visible, (row) => row.rsiMa14, xFor, yRsi, colors.rsiMa, 1.2);
+    drawDivergenceSignals(ctx, findDivergences(visible, visible, (row) => row?.rsi14), xFor, yPrice, yRsi, "RSI");
   }
   if (indicators.macd) {
     const zeroY = yMacd(0);
@@ -1146,6 +1241,7 @@ function createReportChartCanvas(rows, ticker, interval) {
     });
     drawLine(ctx, visibleMacd, (row) => row.macd, xFor, yMacd, colors.sma50, 1.2);
     drawLine(ctx, visibleMacd, (row) => row.signal, xFor, yMacd, colors.rsiMa, 1.2);
+    drawDivergenceSignals(ctx, findDivergences(visible, visibleMacd, (row) => row?.macd), xFor, yPrice, yMacd, "MACD");
   }
 
   const last = rows[rows.length - 1];
