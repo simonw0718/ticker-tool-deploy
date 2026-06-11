@@ -657,6 +657,15 @@ function shouldIncludeOutputTables() {
   return Boolean(document.querySelector('[data-output-panel="table"]:checked'));
 }
 
+function getSelectedOutputIndicators() {
+  const selected = new Set([...document.querySelectorAll("[data-output-indicator]:checked")].map((input) => input.dataset.outputIndicator));
+  return {
+    rsi: selected.has("rsi"),
+    macd: selected.has("macd"),
+    volumeProfile: selected.has("volumeProfile"),
+  };
+}
+
 function resetChartView() {
   state.yScale = 1;
   state.xVisible = 180;
@@ -866,6 +875,72 @@ function drawLine(ctx, rows, getter, xFor, yFor, color, width) {
   ctx.stroke();
 }
 
+function emaNumberSeries(values, period) {
+  const out = [];
+  const multiplier = 2 / (period + 1);
+  let ema = null;
+  values.forEach((value) => {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      out.push(null);
+      return;
+    }
+    ema = ema === null ? value : value * multiplier + ema * (1 - multiplier);
+    out.push(ema);
+  });
+  return out;
+}
+
+function macdRows(rows) {
+  const closes = rows.map((row) => row.close);
+  const ema12 = emaNumberSeries(closes, 12);
+  const ema26 = emaNumberSeries(closes, 26);
+  const macd = rows.map((row, index) => ema12[index] - ema26[index]);
+  const signal = emaNumberSeries(macd, 9);
+  return rows.map((row, index) => ({
+    date: row.date,
+    macd: macd[index],
+    signal: signal[index],
+    hist: macd[index] - signal[index],
+  }));
+}
+
+function drawVolumeProfile(ctx, rows, pMin, pMax, priceTop, priceH, plotLeft, plotW) {
+  const bins = 34;
+  const totals = Array.from({ length: bins }, () => ({ up: 0, down: 0 }));
+  rows.forEach((row) => {
+    const low = clamp(row.low, pMin, pMax);
+    const high = clamp(row.high, pMin, pMax);
+    const start = clamp(Math.floor(((low - pMin) / (pMax - pMin || 1)) * bins), 0, bins - 1);
+    const end = clamp(Math.floor(((high - pMin) / (pMax - pMin || 1)) * bins), 0, bins - 1);
+    const span = Math.max(1, end - start + 1);
+    const key = row.close >= row.open ? "up" : "down";
+    for (let index = start; index <= end; index += 1) totals[index][key] += (row.volume || 0) / span;
+  });
+  const maxTotal = Math.max(...totals.map((item) => item.up + item.down), 1);
+  const profileW = Math.min(180, plotW * 0.16);
+  const right = plotLeft + plotW - 4;
+  const binH = priceH / bins;
+  ctx.save();
+  ctx.globalAlpha = 0.62;
+  totals.forEach((item, index) => {
+    const total = item.up + item.down;
+    if (!total) return;
+    const width = (total / maxTotal) * profileW;
+    const upW = width * (item.up / total);
+    const downW = width - upW;
+    const y = priceTop + priceH - (index + 1) * binH + 1;
+    ctx.fillStyle = "rgba(53,109,255,0.78)";
+    ctx.fillRect(right - width, y, downW, Math.max(1, binH - 2));
+    ctx.fillStyle = "rgba(209,139,0,0.82)";
+    ctx.fillRect(right - upW, y, upW, Math.max(1, binH - 2));
+  });
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "rgba(232,237,242,0.12)";
+  ctx.strokeRect(right - profileW, priceTop, profileW, priceH);
+  drawReportText(ctx, "Volume Profile", right - profileW + 8, priceTop + 14, 12, colors.muted, "700");
+  ctx.restore();
+}
+
 function renderTable(rows, interval = state.interval) {
   const headers = ["Date", "Open", "High", "Low", "Close", "Change", "Volume", "SMA20", "SMA50", "SMA100", "SMA150", "SMA200", "RSI14", "RSI MA"];
   els.tableTitle.textContent = `${intervalLabels[interval]} Data`;
@@ -926,13 +1001,24 @@ function createReportChartCanvas(rows, ticker, interval) {
   }
 
   const visible = rows.slice(-160);
+  const indicators = getSelectedOutputIndicators();
   const pad = { left: 62, right: 84, top: 76, bottom: 28 };
-  const rsiH = 105;
+  const oscillatorPanels = [
+    ...(indicators.rsi ? [{ key: "rsi", height: 96 }] : []),
+    ...(indicators.macd ? [{ key: "macd", height: 110 }] : []),
+  ];
+  const panelGap = oscillatorPanels.length ? 18 : 0;
+  const oscillatorH = oscillatorPanels.reduce((sum, panel) => sum + panel.height, 0) + Math.max(0, oscillatorPanels.length - 1) * 10;
   const volH = 90;
-  const priceH = h - pad.top - pad.bottom - rsiH - volH - 22;
+  const priceH = h - pad.top - pad.bottom - volH - oscillatorH - panelGap;
   const priceTop = pad.top;
   const volTop = priceTop + priceH;
-  const rsiTop = volTop + volH + 22;
+  const panelTops = {};
+  let panelTop = volTop + volH + panelGap;
+  oscillatorPanels.forEach((panel) => {
+    panelTops[panel.key] = panelTop;
+    panelTop += panel.height + 10;
+  });
   const plotW = w - pad.left - pad.right;
   const candleW = Math.max(2, Math.min(9, plotW / visible.length * 0.58));
   const prices = visible.flatMap((row) => [row.high, row.low, ...Object.values(row.sma || {}).filter(Boolean)]);
@@ -945,11 +1031,16 @@ function createReportChartCanvas(rows, ticker, interval) {
   const xFor = (index) => pad.left + (index + 0.5) * (plotW / visible.length);
   const yPrice = (value) => priceTop + ((pMax - value) / (pMax - pMin)) * priceH;
   const yVol = (value) => volTop + volH - (value / maxVol) * (volH - 12);
-  const yRsi = (value) => rsiTop + ((80 - value) / 60) * rsiH;
+  const yRsi = (value) => panelTops.rsi + ((80 - value) / 60) * 96;
+  const macdAll = indicators.macd ? macdRows(rows) : [];
+  const visibleMacd = indicators.macd ? macdAll.slice(-visible.length) : [];
+  const macdMax = indicators.macd ? Math.max(...visibleMacd.flatMap((row) => [Math.abs(row.macd || 0), Math.abs(row.signal || 0), Math.abs(row.hist || 0)]), 0.01) : 1;
+  const yMacd = (value) => panelTops.macd + 55 - (value / macdMax) * 45;
 
   drawGrid(ctx, pad.left, priceTop, plotW, priceH, 5, 6);
   drawGrid(ctx, pad.left, volTop, plotW, volH, 2, 6);
-  drawGrid(ctx, pad.left, rsiTop, plotW, rsiH, 3, 6);
+  if (indicators.rsi) drawGrid(ctx, pad.left, panelTops.rsi, plotW, 96, 3, 6);
+  if (indicators.macd) drawGrid(ctx, pad.left, panelTops.macd, plotW, 110, 4, 6);
 
   ctx.font = "15px system-ui";
   ctx.fillStyle = colors.muted;
@@ -964,6 +1055,7 @@ function createReportChartCanvas(rows, ticker, interval) {
     ctx.fillText(formatDateLabel(visible[index]?.date, interval), x, volTop + volH + 16);
   }
   ctx.textAlign = "left";
+  if (indicators.volumeProfile) drawVolumeProfile(ctx, visible, pMin, pMax, priceTop, priceH, pad.left, plotW);
 
   visible.forEach((row, index) => {
     const x = xFor(index);
@@ -991,14 +1083,33 @@ function createReportChartCanvas(rows, ticker, interval) {
   drawLine(ctx, visible, (row) => row.sma?.["100"], xFor, yPrice, colors.sma100, 1.2);
   drawLine(ctx, visible, (row) => row.sma?.["150"], xFor, yPrice, colors.sma150, 1.2);
   drawLine(ctx, visible, (row) => row.sma?.["200"], xFor, yPrice, colors.sma200, 2.2);
-  drawLine(ctx, visible, (row) => row.rsi14, xFor, yRsi, colors.rsi, 1.2);
-  drawLine(ctx, visible, (row) => row.rsiMa14, xFor, yRsi, colors.rsiMa, 1.2);
+  if (indicators.rsi) {
+    drawLine(ctx, visible, (row) => row.rsi14, xFor, yRsi, colors.rsi, 1.2);
+    drawLine(ctx, visible, (row) => row.rsiMa14, xFor, yRsi, colors.rsiMa, 1.2);
+  }
+  if (indicators.macd) {
+    const zeroY = yMacd(0);
+    ctx.strokeStyle = "rgba(232,237,242,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zeroY);
+    ctx.lineTo(pad.left + plotW, zeroY);
+    ctx.stroke();
+    visibleMacd.forEach((row, index) => {
+      const x = xFor(index);
+      const y = yMacd(row.hist || 0);
+      ctx.fillStyle = (row.hist || 0) >= 0 ? "rgba(0,184,135,0.62)" : "rgba(255,76,90,0.62)";
+      ctx.fillRect(x - 3, Math.min(zeroY, y), 6, Math.max(1, Math.abs(zeroY - y)));
+    });
+    drawLine(ctx, visibleMacd, (row) => row.macd, xFor, yMacd, colors.sma50, 1.2);
+    drawLine(ctx, visibleMacd, (row) => row.signal, xFor, yMacd, colors.rsiMa, 1.2);
+  }
 
   const last = rows[rows.length - 1];
   drawReportText(ctx, `${ticker} · ${intervalLabels[interval]}`, 24, 28, 22, colors.text, "800");
   drawReportText(ctx, `Close ${fmt(last.close)} · ${fmt(last.change)} (${fmt(last.changePct)}%)`, w - 24, 28, 17, last.change >= 0 ? colors.up : colors.down, "700", "right");
   drawReportText(ctx, "SMA 20 50 100 150 200", pad.left, 58, 14, colors.text, "500");
-  drawReportText(ctx, "RSI 14", pad.left, rsiTop + 14, 14, colors.text, "500");
+  if (indicators.rsi) drawReportText(ctx, "RSI 14", pad.left, panelTops.rsi + 14, 14, colors.text, "500");
+  if (indicators.macd) drawReportText(ctx, "MACD 12 26 9", pad.left, panelTops.macd + 14, 14, colors.text, "500");
   return canvas;
 }
 
