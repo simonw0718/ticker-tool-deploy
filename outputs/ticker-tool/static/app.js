@@ -25,6 +25,7 @@ const state = {
 
 const els = {
   tickers: document.querySelector("#tickers"),
+  groupSelect: document.querySelector("#groupSelect"),
   listTabs: document.querySelector("#listTabs"),
   addListBtn: document.querySelector("#addListBtn"),
   renameListBtn: document.querySelector("#renameListBtn"),
@@ -191,9 +192,13 @@ function saveTickerLists() {
 function renderListTabs() {
   const order = normalizeListOrder(state.tickerListOrder);
   state.tickerListOrder = order;
+  els.groupSelect.innerHTML = order.map((key) => `<option value="${escapeAttr(key)}">${escapeHtml(labelForList(key))}</option>`).join("");
+  els.groupSelect.value = state.activeList;
   els.listTabs.innerHTML = order
     .map((key) => `<button type="button" data-list="${escapeAttr(key)}" class="${key === state.activeList ? "active" : ""}">${escapeHtml(labelForList(key))}</button>`)
     .join("");
+  const activeChip = els.listTabs.querySelector(`[data-list="${cssEscape(state.activeList)}"]`);
+  activeChip?.scrollIntoView({ block: "nearest", inline: "center" });
   const activeIndex = order.indexOf(state.activeList);
   els.moveListLeftBtn.disabled = activeIndex <= 0;
   els.moveListRightBtn.disabled = activeIndex < 0 || activeIndex >= order.length - 1;
@@ -309,6 +314,10 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, "\\$&");
 }
 
 const colors = {
@@ -1344,6 +1353,7 @@ function downloadCsv() {
 
 els.fetchBtn.onclick = fetchData;
 els.tickers.addEventListener("input", syncActiveListFromInput);
+els.groupSelect.addEventListener("change", () => switchTickerList(els.groupSelect.value));
 els.addListBtn.onclick = addTickerList;
 els.renameListBtn.onclick = renameTickerList;
 els.moveListLeftBtn.onclick = () => moveActiveTickerList(-1);

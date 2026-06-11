@@ -47,13 +47,15 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
 button,
 input,
 textarea,
+select,
 .file span,
 .nav-link {
   min-height: 42px;
@@ -111,7 +113,8 @@ textarea,
 }
 
 textarea,
-input {
+input,
+select {
   width: 100%;
   color: var(--text);
   background: #080a0d;
@@ -126,20 +129,36 @@ textarea {
   line-height: 1.5;
 }
 
+.group-select {
+  min-height: 42px;
+  font-weight: 800;
+  background: #e8edf2;
+  color: #070809;
+  border-color: #e8edf2;
+}
+
 .list-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 2px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
 }
 
 .list-tabs button {
-  flex: 1 1 calc(33.333% - 6px);
-  min-width: 0;
-  padding: 7px 6px;
+  flex: 0 0 auto;
+  min-width: 86px;
+  max-width: 150px;
+  padding: 7px 10px;
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  scroll-snap-align: start;
 }
 
 .list-tabs button.active {
