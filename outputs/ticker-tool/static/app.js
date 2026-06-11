@@ -26,7 +26,6 @@ const state = {
 const els = {
   tickers: document.querySelector("#tickers"),
   groupSelect: document.querySelector("#groupSelect"),
-  listTabs: document.querySelector("#listTabs"),
   addListBtn: document.querySelector("#addListBtn"),
   renameListBtn: document.querySelector("#renameListBtn"),
   moveListLeftBtn: document.querySelector("#moveListLeftBtn"),
@@ -132,6 +131,7 @@ async function loadTickerLists() {
     state.activeList = serverSaved.activeList || state.activeList;
     savedOwn = serverSaved.tickerLists?.own || savedOwn;
   }
+  removeBrokenOwn1Group();
   state.tickerListOrder = normalizeListOrder(state.tickerListOrder);
   if (!state.tickerLists[state.activeList]) state.activeList = state.tickerListOrder[0] || Object.keys(state.tickerLists)[0] || "own";
   await hydrateOwnListFromRecords(savedOwn);
@@ -194,11 +194,6 @@ function renderListTabs() {
   state.tickerListOrder = order;
   els.groupSelect.innerHTML = order.map((key) => `<option value="${escapeAttr(key)}">${escapeHtml(labelForList(key))}</option>`).join("");
   els.groupSelect.value = state.activeList;
-  els.listTabs.innerHTML = order
-    .map((key) => `<button type="button" data-list="${escapeAttr(key)}" class="${key === state.activeList ? "active" : ""}">${escapeHtml(labelForList(key))}</button>`)
-    .join("");
-  const activeChip = els.listTabs.querySelector(`[data-list="${cssEscape(state.activeList)}"]`);
-  activeChip?.scrollIntoView({ block: "nearest", inline: "center" });
   const activeIndex = order.indexOf(state.activeList);
   els.moveListLeftBtn.disabled = activeIndex <= 0;
   els.moveListRightBtn.disabled = activeIndex < 0 || activeIndex >= order.length - 1;
@@ -291,6 +286,18 @@ function normalizeListOrder(order = state.tickerListOrder) {
   return clean;
 }
 
+function removeBrokenOwn1Group() {
+  Object.keys(state.tickerLists).forEach((key) => {
+    const label = String(state.tickerListLabels[key] || key).trim().toUpperCase();
+    if (label === "OWN1") {
+      delete state.tickerLists[key];
+      delete state.tickerListLabels[key];
+    }
+  });
+  state.tickerListOrder = normalizeListOrder(state.tickerListOrder);
+  if (!state.tickerLists[state.activeList]) state.activeList = state.tickerListOrder[0] || "own";
+}
+
 function uniqueListKey(label) {
   const base =
     label
@@ -314,10 +321,6 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
-}
-
-function cssEscape(value) {
-  return window.CSS?.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, "\\$&");
 }
 
 const colors = {
@@ -1359,11 +1362,6 @@ els.renameListBtn.onclick = renameTickerList;
 els.moveListLeftBtn.onclick = () => moveActiveTickerList(-1);
 els.moveListRightBtn.onclick = () => moveActiveTickerList(1);
 els.deleteListBtn.onclick = deleteTickerList;
-els.listTabs.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-list]");
-  if (!button) return;
-  switchTickerList(button.dataset.list);
-});
 els.csvFile.onchange = importCsvFiles;
 async function setIntervalView(interval) {
   state.interval = interval;
