@@ -131,12 +131,11 @@ async function loadTickerLists() {
     state.activeList = serverSaved.activeList || state.activeList;
     savedOwn = serverSaved.tickerLists?.own || savedOwn;
   }
-  removeBrokenOwn1Group();
-  state.tickerListOrder = normalizeListOrder(state.tickerListOrder);
-  if (!state.tickerLists[state.activeList]) state.activeList = state.tickerListOrder[0] || Object.keys(state.tickerLists)[0] || "own";
+  const cleanup = sanitizeTickerListState();
   await hydrateOwnListFromRecords(savedOwn);
   els.tickers.value = state.tickerLists[state.activeList] || "";
   renderListTabs();
+  if (cleanup.changed) saveTickerLists();
 }
 
 function normalizeTickerName(value) {
@@ -172,6 +171,7 @@ async function hydrateOwnListFromRecords(savedOwn) {
 }
 
 function saveTickerLists() {
+  sanitizeTickerListState();
   localStorage.setItem(
     LIST_STORAGE_KEY,
     JSON.stringify({
@@ -190,6 +190,7 @@ function saveTickerLists() {
 }
 
 function renderListTabs() {
+  sanitizeTickerListState();
   const order = normalizeListOrder(state.tickerListOrder);
   state.tickerListOrder = order;
   els.groupSelect.innerHTML = order.map((key) => `<option value="${escapeAttr(key)}">${escapeHtml(labelForList(key))}</option>`).join("");
@@ -201,13 +202,28 @@ function renderListTabs() {
 }
 
 function syncActiveListFromInput() {
+  sanitizeTickerListState();
+  if (!state.tickerLists[state.activeList]) return;
   state.tickerLists[state.activeList] = els.tickers.value;
   saveTickerLists();
 }
 
 function switchTickerList(nextList) {
+  sanitizeTickerListState();
   if (!state.tickerLists[nextList]) return;
+  if (nextList === state.activeList) {
+    els.tickers.value = state.tickerLists[state.activeList] || "";
+    renderListTabs();
+    return;
+  }
   syncActiveListFromInput();
+  sanitizeTickerListState();
+  if (!state.tickerLists[nextList]) {
+    els.tickers.value = state.tickerLists[state.activeList] || "";
+    renderListTabs();
+    saveTickerLists();
+    return;
+  }
   state.activeList = nextList;
   els.tickers.value = state.tickerLists[state.activeList] || "";
   renderListTabs();
@@ -224,6 +240,10 @@ function addTickerList() {
   const rawName = window.prompt("New ticker group name", "New Group");
   const label = String(rawName || "").trim();
   if (!label) return;
+  if (isBrokenOwn1Group(label, "")) {
+    els.status.textContent = "Own1 was removed. Use another group name.";
+    return;
+  }
   const key = uniqueListKey(label);
   state.tickerLists[key] = "";
   state.tickerListLabels[key] = label;
@@ -237,11 +257,16 @@ function addTickerList() {
 }
 
 function renameTickerList() {
+  sanitizeTickerListState();
   const current = state.activeList;
   if (!state.tickerLists[current]) return;
   const rawName = window.prompt("Rename ticker group", labelForList(current));
   const label = String(rawName || "").trim();
   if (!label) return;
+  if (isBrokenOwn1Group(label, current)) {
+    els.status.textContent = "Own1 was removed. Use another group name.";
+    return;
+  }
   state.tickerListLabels[current] = label;
   renderListTabs();
   saveTickerLists();
@@ -286,16 +311,35 @@ function normalizeListOrder(order = state.tickerListOrder) {
   return clean;
 }
 
-function removeBrokenOwn1Group() {
+function isBrokenOwn1Group(label, key) {
+  return String(label || "").trim().toUpperCase() === "OWN1" || String(key || "").trim().toLowerCase() === "custom-own1";
+}
+
+function sanitizeTickerListState() {
+  let changed = false;
   Object.keys(state.tickerLists).forEach((key) => {
-    const label = String(state.tickerListLabels[key] || key).trim().toUpperCase();
-    if (label === "OWN1") {
+    const label = state.tickerListLabels[key] || key;
+    if (isBrokenOwn1Group(label, key)) {
       delete state.tickerLists[key];
       delete state.tickerListLabels[key];
+      changed = true;
     }
   });
-  state.tickerListOrder = normalizeListOrder(state.tickerListOrder);
-  if (!state.tickerLists[state.activeList]) state.activeList = state.tickerListOrder[0] || "own";
+  Object.keys(state.tickerListLabels).forEach((key) => {
+    if (!state.tickerLists[key]) {
+      delete state.tickerListLabels[key];
+      changed = true;
+    }
+  });
+  const previousOrder = Array.isArray(state.tickerListOrder) ? state.tickerListOrder : [];
+  const order = normalizeListOrder(previousOrder);
+  if (order.join("\n") !== previousOrder.join("\n")) changed = true;
+  state.tickerListOrder = order;
+  if (!state.tickerLists[state.activeList]) {
+    state.activeList = state.tickerListOrder[0] || Object.keys(state.tickerLists)[0] || "own";
+    changed = true;
+  }
+  return { changed };
 }
 
 function uniqueListKey(label) {
