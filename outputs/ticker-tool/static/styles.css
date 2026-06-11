@@ -163,6 +163,30 @@ textarea {
   background: #151a20;
 }
 
+.list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px 38px 38px;
+  gap: 6px;
+}
+
+.list-tools button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 8px;
+  color: var(--muted);
+  background: #101317;
+}
+
+.list-tools button:hover:not(:disabled) {
+  color: var(--text);
+  background: #151a20;
+}
+
+.list-tools button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

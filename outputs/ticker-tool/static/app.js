@@ -20,12 +20,17 @@ const state = {
     keyWatch: "Key Watch",
     watchlist: "Watchlist",
   },
+  tickerListOrder: ["own", "keyWatch", "watchlist"],
 };
 
 const els = {
   tickers: document.querySelector("#tickers"),
   listTabs: document.querySelector("#listTabs"),
   addListBtn: document.querySelector("#addListBtn"),
+  renameListBtn: document.querySelector("#renameListBtn"),
+  moveListLeftBtn: document.querySelector("#moveListLeftBtn"),
+  moveListRightBtn: document.querySelector("#moveListRightBtn"),
+  deleteListBtn: document.querySelector("#deleteListBtn"),
   start: document.querySelector("#start"),
   end: document.querySelector("#end"),
   rawDays: document.querySelector("#rawDays"),
@@ -112,6 +117,7 @@ async function loadTickerLists() {
     const saved = JSON.parse(localStorage.getItem(LIST_STORAGE_KEY) || "{}");
     state.tickerLists = { ...state.tickerLists, ...saved.tickerLists };
     state.tickerListLabels = { ...state.tickerListLabels, ...saved.tickerListLabels };
+    state.tickerListOrder = normalizeListOrder(saved.tickerListOrder);
     state.activeList = saved.activeList || state.activeList;
     savedOwn = saved.tickerLists?.own || "";
   } catch {
@@ -121,10 +127,12 @@ async function loadTickerLists() {
   if (serverSaved) {
     state.tickerLists = { ...state.tickerLists, ...serverSaved.tickerLists };
     state.tickerListLabels = { ...state.tickerListLabels, ...serverSaved.tickerListLabels };
+    state.tickerListOrder = normalizeListOrder(serverSaved.tickerListOrder);
     state.activeList = serverSaved.activeList || state.activeList;
     savedOwn = serverSaved.tickerLists?.own || savedOwn;
   }
-  if (!state.tickerLists[state.activeList]) state.activeList = "own";
+  state.tickerListOrder = normalizeListOrder(state.tickerListOrder);
+  if (!state.tickerLists[state.activeList]) state.activeList = state.tickerListOrder[0] || Object.keys(state.tickerLists)[0] || "own";
   await hydrateOwnListFromRecords(savedOwn);
   els.tickers.value = state.tickerLists[state.activeList] || "";
   renderListTabs();
@@ -169,19 +177,27 @@ function saveTickerLists() {
       activeList: state.activeList,
       tickerLists: state.tickerLists,
       tickerListLabels: state.tickerListLabels,
+      tickerListOrder: state.tickerListOrder,
     })
   );
   saveServerStore("tickerLists", {
     activeList: state.activeList,
     tickerLists: state.tickerLists,
     tickerListLabels: state.tickerListLabels,
+    tickerListOrder: state.tickerListOrder,
   });
 }
 
 function renderListTabs() {
-  els.listTabs.innerHTML = Object.keys(state.tickerLists)
+  const order = normalizeListOrder(state.tickerListOrder);
+  state.tickerListOrder = order;
+  els.listTabs.innerHTML = order
     .map((key) => `<button type="button" data-list="${escapeAttr(key)}" class="${key === state.activeList ? "active" : ""}">${escapeHtml(labelForList(key))}</button>`)
     .join("");
+  const activeIndex = order.indexOf(state.activeList);
+  els.moveListLeftBtn.disabled = activeIndex <= 0;
+  els.moveListRightBtn.disabled = activeIndex < 0 || activeIndex >= order.length - 1;
+  els.deleteListBtn.disabled = order.length <= 1;
 }
 
 function syncActiveListFromInput() {
@@ -211,12 +227,63 @@ function addTickerList() {
   const key = uniqueListKey(label);
   state.tickerLists[key] = "";
   state.tickerListLabels[key] = label;
+  state.tickerListOrder = normalizeListOrder(state.tickerListOrder).concat(key);
   state.activeList = key;
   els.tickers.value = "";
   renderListTabs();
   saveTickerLists();
   els.tickers.focus();
   els.status.textContent = `Added ${label}`;
+}
+
+function renameTickerList() {
+  const current = state.activeList;
+  if (!state.tickerLists[current]) return;
+  const rawName = window.prompt("Rename ticker group", labelForList(current));
+  const label = String(rawName || "").trim();
+  if (!label) return;
+  state.tickerListLabels[current] = label;
+  renderListTabs();
+  saveTickerLists();
+  els.status.textContent = `Renamed to ${label}`;
+}
+
+function moveActiveTickerList(direction) {
+  const order = normalizeListOrder(state.tickerListOrder);
+  const index = order.indexOf(state.activeList);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+  state.tickerListOrder = order;
+  renderListTabs();
+  saveTickerLists();
+  els.status.textContent = `Moved ${labelForList(state.activeList)}`;
+}
+
+function deleteTickerList() {
+  const order = normalizeListOrder(state.tickerListOrder);
+  if (order.length <= 1) return;
+  const key = state.activeList;
+  const label = labelForList(key);
+  if (!window.confirm(`Delete ticker group "${label}"?`)) return;
+  const index = order.indexOf(key);
+  delete state.tickerLists[key];
+  delete state.tickerListLabels[key];
+  state.tickerListOrder = order.filter((item) => item !== key);
+  state.activeList = state.tickerListOrder[Math.max(0, Math.min(index, state.tickerListOrder.length - 1))] || Object.keys(state.tickerLists)[0];
+  els.tickers.value = state.tickerLists[state.activeList] || "";
+  renderListTabs();
+  saveTickerLists();
+  els.status.textContent = `Deleted ${label}`;
+}
+
+function normalizeListOrder(order = state.tickerListOrder) {
+  const known = Object.keys(state.tickerLists);
+  const clean = [...new Set(Array.isArray(order) ? order : [])].filter((key) => known.includes(key));
+  known.forEach((key) => {
+    if (!clean.includes(key)) clean.push(key);
+  });
+  return clean;
 }
 
 function uniqueListKey(label) {
@@ -1278,6 +1345,10 @@ function downloadCsv() {
 els.fetchBtn.onclick = fetchData;
 els.tickers.addEventListener("input", syncActiveListFromInput);
 els.addListBtn.onclick = addTickerList;
+els.renameListBtn.onclick = renameTickerList;
+els.moveListLeftBtn.onclick = () => moveActiveTickerList(-1);
+els.moveListRightBtn.onclick = () => moveActiveTickerList(1);
+els.deleteListBtn.onclick = deleteTickerList;
 els.listTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-list]");
   if (!button) return;
