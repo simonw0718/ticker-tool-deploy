@@ -37,14 +37,15 @@
             <button type="button" data-list="keyWatch">Key Watch</button>
             <button type="button" data-list="watchlist">Watchlist</button>
           </div>
-          <button id="addListBtn" type="button" class="add-list icon-button"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Group</span></button>
           <div class="list-tools" aria-label="Ticker group tools">
-            <button id="renameListBtn" type="button" class="icon-button"><svg class="icon"><use href="#icon-edit"></use></svg><span>Rename</span></button>
+            <button id="addListBtn" type="button" aria-label="Add group" title="Add group"><svg class="icon"><use href="#icon-plus"></use></svg></button>
+            <button id="renameListBtn" type="button" aria-label="Rename group" title="Rename group"><svg class="icon"><use href="#icon-edit"></use></svg></button>
             <button id="moveListLeftBtn" type="button" aria-label="Move group left"><svg class="icon"><use href="#icon-left"></use></svg></button>
             <button id="moveListRightBtn" type="button" aria-label="Move group right"><svg class="icon"><use href="#icon-right"></use></svg></button>
             <button id="deleteListBtn" type="button" aria-label="Delete group"><svg class="icon"><use href="#icon-trash"></use></svg></button>
           </div>
-          <textarea id="tickers" spellcheck="false">AAPL
+          <span class="subfield-label">Symbols in selected group</span>
+          <textarea id="tickers" spellcheck="false" placeholder="One ticker per line">AAPL
 MSFT
 NVDA
 TSLA
