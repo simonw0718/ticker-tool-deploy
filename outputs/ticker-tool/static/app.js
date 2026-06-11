@@ -9,18 +9,14 @@ const state = {
   touchPinch: null,
   xVisible: 180,
   xOffset: 0,
-  activeList: "own",
-  tickerLists: {
-    own: "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ",
-    keyWatch: "AMZN\nGOOGL\nMETA\nAMD\nAVGO",
-    watchlist: "PLTR\nCRWD\nNET\nSNOW\nSHOP",
-  },
-  tickerListLabels: {
-    own: "Own",
-    keyWatch: "Key Watch",
-    watchlist: "Watchlist",
-  },
-  tickerListOrder: ["own", "keyWatch", "watchlist"],
+  activeGroupId: "own",
+  tickerGroups: [
+    { id: "own", name: "Own", tickers: "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ" },
+    { id: "keyWatch", name: "Key Watch", tickers: "AMZN\nGOOGL\nMETA\nAMD\nAVGO" },
+    { id: "watchlist", name: "Watchlist", tickers: "PLTR\nCRWD\nNET\nSNOW\nSHOP" },
+  ],
+  saveTimer: null,
+  saveController: null,
 };
 
 const els = {
@@ -66,6 +62,11 @@ const intervalLabels = {
 const WORKER_ORIGIN = "https://ticker-tool.simonw0718.workers.dev";
 const LIST_STORAGE_KEY = "ticker-k-tool-lists-v1";
 const DEFAULT_OWN_LIST = "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ";
+const DEFAULT_TICKER_GROUPS = [
+  { id: "own", name: "Own", tickers: DEFAULT_OWN_LIST },
+  { id: "keyWatch", name: "Key Watch", tickers: "AMZN\nGOOGL\nMETA\nAMD\nAVGO" },
+  { id: "watchlist", name: "Watchlist", tickers: "PLTR\nCRWD\nNET\nSNOW\nSHOP" },
+];
 
 function apiUrl(path) {
   const host = location.hostname;
@@ -112,30 +113,20 @@ function saveServerStore(key, payload) {
 }
 
 async function loadTickerLists() {
-  let savedOwn = "";
+  let saved = null;
   try {
-    const saved = JSON.parse(localStorage.getItem(LIST_STORAGE_KEY) || "{}");
-    state.tickerLists = { ...state.tickerLists, ...saved.tickerLists };
-    state.tickerListLabels = { ...state.tickerListLabels, ...saved.tickerListLabels };
-    state.tickerListOrder = normalizeListOrder(saved.tickerListOrder);
-    state.activeList = saved.activeList || state.activeList;
-    savedOwn = saved.tickerLists?.own || "";
+    saved = JSON.parse(localStorage.getItem(LIST_STORAGE_KEY) || "{}");
   } catch {
-    state.activeList = "own";
+    saved = null;
   }
   const serverSaved = await loadServerStore("tickerLists");
-  if (serverSaved) {
-    state.tickerLists = { ...state.tickerLists, ...serverSaved.tickerLists };
-    state.tickerListLabels = { ...state.tickerListLabels, ...serverSaved.tickerListLabels };
-    state.tickerListOrder = normalizeListOrder(serverSaved.tickerListOrder);
-    state.activeList = serverSaved.activeList || state.activeList;
-    savedOwn = serverSaved.tickerLists?.own || savedOwn;
-  }
-  const cleanup = sanitizeTickerListState();
+  const source = chooseTickerGroupSource(saved, serverSaved);
+  applyTickerGroupPayload(source);
+  const savedOwn = groupById("own")?.tickers || "";
   await hydrateOwnListFromRecords(savedOwn);
-  els.tickers.value = state.tickerLists[state.activeList] || "";
+  syncTextareaFromActiveGroup();
   renderListTabs();
-  if (cleanup.changed) saveTickerLists();
+  saveTickerLists();
 }
 
 function normalizeTickerName(value) {
@@ -160,79 +151,79 @@ function shouldAutoFillOwnList(value) {
 }
 
 async function hydrateOwnListFromRecords(savedOwn) {
-  const currentOwn = state.tickerLists.own || "";
+  const ownGroup = groupById("own");
+  const currentOwn = ownGroup?.tickers || "";
   if (!shouldAutoFillOwnList(savedOwn || currentOwn)) return;
   const records = await loadServerStore("records");
   const tickers = extractAccountTickers(records);
   if (!tickers.length) return;
-  state.tickerLists.own = tickers.join("\n");
-  if (state.activeList === "own") els.status.textContent = "Own loaded from Records";
+  if (ownGroup) ownGroup.tickers = tickers.join("\n");
+  if (state.activeGroupId === "own") els.status.textContent = "Own loaded from Records";
   saveTickerLists();
 }
 
-function saveTickerLists() {
-  sanitizeTickerListState();
-  localStorage.setItem(
-    LIST_STORAGE_KEY,
-    JSON.stringify({
-      activeList: state.activeList,
-      tickerLists: state.tickerLists,
-      tickerListLabels: state.tickerListLabels,
-      tickerListOrder: state.tickerListOrder,
-    })
-  );
-  saveServerStore("tickerLists", {
-    activeList: state.activeList,
-    tickerLists: state.tickerLists,
-    tickerListLabels: state.tickerListLabels,
-    tickerListOrder: state.tickerListOrder,
+function saveTickerLists({ immediate = false } = {}) {
+  normalizeTickerGroups();
+  const payload = tickerGroupPayload();
+  localStorage.setItem(LIST_STORAGE_KEY, JSON.stringify(payload));
+  if (state.saveTimer) clearTimeout(state.saveTimer);
+  const persist = () => saveTickerGroupPayload(payload);
+  if (immediate) {
+    persist();
+  } else {
+    state.saveTimer = setTimeout(persist, 450);
+  }
+}
+
+function saveTickerGroupPayload(payload) {
+  if (state.saveController) state.saveController.abort();
+  state.saveController = new AbortController();
+  fetch(apiUrl("/api/store/tickerLists"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: state.saveController.signal,
+  }).catch((error) => {
+    if (error.name !== "AbortError") console.warn("Ticker group cloud save failed", error);
   });
 }
 
 function renderListTabs() {
-  sanitizeTickerListState();
-  const order = normalizeListOrder(state.tickerListOrder);
-  state.tickerListOrder = order;
-  els.groupSelect.innerHTML = order.map((key) => `<option value="${escapeAttr(key)}">${escapeHtml(labelForList(key))}</option>`).join("");
-  els.groupSelect.value = state.activeList;
-  const activeIndex = order.indexOf(state.activeList);
+  normalizeTickerGroups();
+  els.groupSelect.innerHTML = state.tickerGroups.map((group) => `<option value="${escapeAttr(group.id)}">${escapeHtml(group.name)}</option>`).join("");
+  els.groupSelect.value = state.activeGroupId;
+  const activeIndex = state.tickerGroups.findIndex((group) => group.id === state.activeGroupId);
   els.moveListLeftBtn.disabled = activeIndex <= 0;
-  els.moveListRightBtn.disabled = activeIndex < 0 || activeIndex >= order.length - 1;
-  els.deleteListBtn.disabled = order.length <= 1;
+  els.moveListRightBtn.disabled = activeIndex < 0 || activeIndex >= state.tickerGroups.length - 1;
+  els.deleteListBtn.disabled = state.tickerGroups.length <= 1;
 }
 
 function syncActiveListFromInput() {
-  sanitizeTickerListState();
-  if (!state.tickerLists[state.activeList]) return;
-  state.tickerLists[state.activeList] = els.tickers.value;
+  normalizeTickerGroups();
+  const group = activeGroup();
+  if (!group) return;
+  group.tickers = els.tickers.value;
   saveTickerLists();
 }
 
 function switchTickerList(nextList) {
-  sanitizeTickerListState();
-  if (!state.tickerLists[nextList]) return;
-  if (nextList === state.activeList) {
-    els.tickers.value = state.tickerLists[state.activeList] || "";
+  normalizeTickerGroups();
+  if (!state.tickerGroups.some((group) => group.id === nextList)) return;
+  if (nextList === state.activeGroupId) {
+    syncTextareaFromActiveGroup();
     renderListTabs();
     return;
   }
   syncActiveListFromInput();
-  sanitizeTickerListState();
-  if (!state.tickerLists[nextList]) {
-    els.tickers.value = state.tickerLists[state.activeList] || "";
-    renderListTabs();
-    saveTickerLists();
-    return;
-  }
-  state.activeList = nextList;
-  els.tickers.value = state.tickerLists[state.activeList] || "";
+  state.activeGroupId = nextList;
+  syncTextareaFromActiveGroup();
   renderListTabs();
-  saveTickerLists();
-  els.status.textContent = `Editing ${labelForList(state.activeList)}`;
+  saveTickerLists({ immediate: true });
+  els.status.textContent = `Editing ${labelForList(state.activeGroupId)}`;
 }
 
 function labelForList(list) {
-  return state.tickerListLabels[list] || list;
+  return groupById(list)?.name || list;
 }
 
 function addTickerList() {
@@ -240,123 +231,154 @@ function addTickerList() {
   const rawName = window.prompt("New ticker group name", "New Group");
   const label = String(rawName || "").trim();
   if (!label) return;
-  if (isBrokenOwn1Group(label, "")) {
-    els.status.textContent = "Own1 was removed. Use another group name.";
-    return;
-  }
-  const key = uniqueListKey(label);
-  state.tickerLists[key] = "";
-  state.tickerListLabels[key] = label;
-  state.tickerListOrder = normalizeListOrder(state.tickerListOrder).concat(key);
-  state.activeList = key;
+  const key = uniqueGroupId();
+  state.tickerGroups.push({ id: key, name: label, tickers: "" });
+  state.activeGroupId = key;
   els.tickers.value = "";
   renderListTabs();
-  saveTickerLists();
+  saveTickerLists({ immediate: true });
   els.tickers.focus();
   els.status.textContent = `Added ${label}`;
 }
 
 function renameTickerList() {
-  sanitizeTickerListState();
-  const current = state.activeList;
-  if (!state.tickerLists[current]) return;
-  const rawName = window.prompt("Rename ticker group", labelForList(current));
+  normalizeTickerGroups();
+  const group = activeGroup();
+  if (!group) return;
+  const rawName = window.prompt("Rename ticker group", group.name);
   const label = String(rawName || "").trim();
   if (!label) return;
-  if (isBrokenOwn1Group(label, current)) {
-    els.status.textContent = "Own1 was removed. Use another group name.";
-    return;
-  }
-  state.tickerListLabels[current] = label;
+  group.name = label;
   renderListTabs();
-  saveTickerLists();
+  saveTickerLists({ immediate: true });
   els.status.textContent = `Renamed to ${label}`;
 }
 
 function moveActiveTickerList(direction) {
-  const order = normalizeListOrder(state.tickerListOrder);
-  const index = order.indexOf(state.activeList);
+  normalizeTickerGroups();
+  const index = state.tickerGroups.findIndex((group) => group.id === state.activeGroupId);
   const nextIndex = index + direction;
-  if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
-  [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
-  state.tickerListOrder = order;
+  if (index < 0 || nextIndex < 0 || nextIndex >= state.tickerGroups.length) return;
+  [state.tickerGroups[index], state.tickerGroups[nextIndex]] = [state.tickerGroups[nextIndex], state.tickerGroups[index]];
   renderListTabs();
-  saveTickerLists();
-  els.status.textContent = `Moved ${labelForList(state.activeList)}`;
+  saveTickerLists({ immediate: true });
+  els.status.textContent = `Moved ${labelForList(state.activeGroupId)}`;
 }
 
 function deleteTickerList() {
-  const order = normalizeListOrder(state.tickerListOrder);
-  if (order.length <= 1) return;
-  const key = state.activeList;
+  normalizeTickerGroups();
+  if (state.tickerGroups.length <= 1) return;
+  const key = state.activeGroupId;
+  const index = state.tickerGroups.findIndex((group) => group.id === key);
   const label = labelForList(key);
   if (!window.confirm(`Delete ticker group "${label}"?`)) return;
-  const index = order.indexOf(key);
-  delete state.tickerLists[key];
-  delete state.tickerListLabels[key];
-  state.tickerListOrder = order.filter((item) => item !== key);
-  state.activeList = state.tickerListOrder[Math.max(0, Math.min(index, state.tickerListOrder.length - 1))] || Object.keys(state.tickerLists)[0];
-  els.tickers.value = state.tickerLists[state.activeList] || "";
+  state.tickerGroups = state.tickerGroups.filter((group) => group.id !== key);
+  const nextIndex = Math.max(0, Math.min(index, state.tickerGroups.length - 1));
+  state.activeGroupId = state.tickerGroups[nextIndex]?.id || "own";
+  syncTextareaFromActiveGroup();
   renderListTabs();
-  saveTickerLists();
+  saveTickerLists({ immediate: true });
   els.status.textContent = `Deleted ${label}`;
 }
 
-function normalizeListOrder(order = state.tickerListOrder) {
-  const known = Object.keys(state.tickerLists);
-  const clean = [...new Set(Array.isArray(order) ? order : [])].filter((key) => known.includes(key));
-  known.forEach((key) => {
-    if (!clean.includes(key)) clean.push(key);
-  });
-  return clean;
+function chooseTickerGroupSource(localPayload, serverPayload) {
+  const localScore = tickerGroupSourceScore(localPayload);
+  const serverScore = tickerGroupSourceScore(serverPayload);
+  if (localScore > serverScore) return localPayload;
+  return serverPayload || localPayload || null;
 }
 
-function isBrokenOwn1Group(label, key) {
-  return String(label || "").trim().toUpperCase() === "OWN1" || String(key || "").trim().toLowerCase() === "custom-own1";
+function tickerGroupSourceScore(payload) {
+  return groupsFromPayload(payload).reduce((score, group) => score + group.tickers.trim().length + 20, 0);
 }
 
-function sanitizeTickerListState() {
-  let changed = false;
-  Object.keys(state.tickerLists).forEach((key) => {
-    const label = state.tickerListLabels[key] || key;
-    if (isBrokenOwn1Group(label, key)) {
-      delete state.tickerLists[key];
-      delete state.tickerListLabels[key];
-      changed = true;
-    }
-  });
-  Object.keys(state.tickerListLabels).forEach((key) => {
-    if (!state.tickerLists[key]) {
-      delete state.tickerListLabels[key];
-      changed = true;
-    }
-  });
-  const previousOrder = Array.isArray(state.tickerListOrder) ? state.tickerListOrder : [];
-  const order = normalizeListOrder(previousOrder);
-  if (order.join("\n") !== previousOrder.join("\n")) changed = true;
-  state.tickerListOrder = order;
-  if (!state.tickerLists[state.activeList]) {
-    state.activeList = state.tickerListOrder[0] || Object.keys(state.tickerLists)[0] || "own";
-    changed = true;
+function groupsFromPayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload.tickerGroups)) {
+    return payload.tickerGroups.map((group) => ({
+      id: cleanGroupId(group.id),
+      name: cleanGroupName(group.name || group.id),
+      tickers: String(group.tickers || ""),
+    }));
   }
-  return { changed };
+  const lists = payload.tickerLists || {};
+  const labels = payload.tickerListLabels || {};
+  const orderedKeys = [...new Set([...(Array.isArray(payload.tickerListOrder) ? payload.tickerListOrder : []), ...Object.keys(lists)])];
+  return orderedKeys
+    .filter((key) => !shouldDropLegacyGroup(key, labels[key], lists[key]))
+    .map((key) => ({
+      id: cleanGroupId(key),
+      name: cleanGroupName(labels[key] || builtinGroupName(key) || key),
+      tickers: String(lists[key] || ""),
+    }));
 }
 
-function uniqueListKey(label) {
-  const base =
-    label
-      .trim()
-      .replace(/([a-z])([A-Z])/g, "$1-$2")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "group";
-  let key = `custom-${base}`;
-  let index = 2;
-  while (state.tickerLists[key]) {
-    key = `custom-${base}-${index}`;
-    index += 1;
-  }
-  return key;
+function applyTickerGroupPayload(payload) {
+  const groups = groupsFromPayload(payload);
+  state.tickerGroups = groups.length ? groups : DEFAULT_TICKER_GROUPS.map((group) => ({ ...group }));
+  state.activeGroupId = cleanGroupId(payload?.activeGroupId || payload?.activeList || state.activeGroupId);
+  normalizeTickerGroups();
+}
+
+function tickerGroupPayload() {
+  normalizeTickerGroups();
+  return {
+    version: 2,
+    activeGroupId: state.activeGroupId,
+    tickerGroups: state.tickerGroups.map((group) => ({ id: group.id, name: group.name, tickers: group.tickers })),
+  };
+}
+
+function normalizeTickerGroups() {
+  const used = new Set();
+  const groups = [];
+  (state.tickerGroups || []).forEach((group) => {
+    let id = cleanGroupId(group.id);
+    const name = cleanGroupName(group.name || builtinGroupName(id) || "New Group");
+    if (!id || used.has(id)) id = uniqueGroupId(used);
+    used.add(id);
+    groups.push({ id, name, tickers: String(group.tickers || "") });
+  });
+  if (!groups.length) groups.push(...DEFAULT_TICKER_GROUPS.map((group) => ({ ...group })));
+  state.tickerGroups = groups;
+  if (!state.tickerGroups.some((group) => group.id === state.activeGroupId)) state.activeGroupId = state.tickerGroups[0]?.id || "own";
+}
+
+function activeGroup() {
+  return groupById(state.activeGroupId);
+}
+
+function groupById(id) {
+  return state.tickerGroups.find((group) => group.id === id);
+}
+
+function syncTextareaFromActiveGroup() {
+  els.tickers.value = activeGroup()?.tickers || "";
+}
+
+function cleanGroupId(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 48);
+}
+
+function cleanGroupName(value) {
+  return String(value || "New Group").trim().slice(0, 40) || "New Group";
+}
+
+function builtinGroupName(key) {
+  return DEFAULT_TICKER_GROUPS.find((group) => group.id === key)?.name || "";
+}
+
+function shouldDropLegacyGroup(key, label, tickers) {
+  const normalizedLabel = String(label || key || "").trim().toUpperCase();
+  const normalizedKey = String(key || "").toLowerCase();
+  const isEmptyCustom = normalizedKey.startsWith("custom-") && !String(tickers || "").trim();
+  return isEmptyCustom || normalizedLabel === "OWN1";
+}
+
+function uniqueGroupId(existing = new Set(state.tickerGroups.map((group) => group.id))) {
+  let id = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  while (existing.has(id)) id = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return id;
 }
 
 function escapeHtml(value) {
@@ -416,7 +438,7 @@ async function fetchData() {
   const tickers = parseTickers();
   if (!tickers.length) return;
   const previousData = { ...state.data };
-  setFetchProgress(0, `Fetching ${labelForList(state.activeList)} · 0/${tickers.length}`);
+  setFetchProgress(0, `Fetching ${labelForList(state.activeGroupId)} · 0/${tickers.length}`);
   els.fetchBtn.disabled = true;
   const startedAt = performance.now();
   try {
