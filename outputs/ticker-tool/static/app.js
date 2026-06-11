@@ -61,6 +61,7 @@ const intervalLabels = {
 
 const WORKER_ORIGIN = "https://ticker-tool.simonw0718.workers.dev";
 const LIST_STORAGE_KEY = "ticker-k-tool-lists-v1";
+const CHART_STORAGE_KEY = "ticker-k-tool-chart-session-v1";
 const DEFAULT_OWN_LIST = "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ";
 const DEFAULT_TICKER_GROUPS = [
   { id: "own", name: "Own", tickers: DEFAULT_OWN_LIST },
@@ -464,12 +465,60 @@ async function fetchData() {
     resetChartView();
     renderTickerButtons();
     render();
+    saveChartSession();
     const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
     setFetchProgress(100, `Loaded ${Object.keys(state.data).length - failedCount}/${Object.keys(state.data).length} tickers · ${seconds}s${failedCount ? ` · ${failedCount} failed` : ""}`);
   } catch (error) {
     setFetchProgress(100, error.message || String(error));
   } finally {
     els.fetchBtn.disabled = false;
+  }
+}
+
+function saveChartSession() {
+  try {
+    const data = Object.fromEntries(
+      Object.entries(state.data).map(([ticker, item]) => [
+        ticker,
+        {
+          ...item,
+          intradayLoading: false,
+          intradayPromise: null,
+        },
+      ])
+    );
+    if (!Object.keys(data).length) return;
+    sessionStorage.setItem(
+      CHART_STORAGE_KEY,
+      JSON.stringify({
+        data,
+        activeTicker: state.activeTicker,
+        interval: state.interval,
+        yScale: state.yScale,
+        xVisible: state.xVisible,
+        xOffset: state.xOffset,
+        savedAt: Date.now(),
+      })
+    );
+  } catch {
+  }
+}
+
+function restoreChartSession() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CHART_STORAGE_KEY) || "null");
+    if (!saved?.data || !Object.keys(saved.data).length) return;
+    state.data = saved.data;
+    state.activeTicker = saved.activeTicker && state.data[saved.activeTicker] ? saved.activeTicker : Object.keys(state.data)[0];
+    state.interval = saved.interval || state.interval;
+    state.yScale = Number(saved.yScale) || 1;
+    state.xVisible = Number(saved.xVisible) || state.xVisible;
+    state.xOffset = Number(saved.xOffset) || 0;
+    renderTickerButtons();
+    setIntervalButtons();
+    render();
+    els.status.textContent = `Restored ${Object.keys(state.data).length} cached tickers`;
+  } catch {
   }
 }
 
@@ -480,20 +529,58 @@ function setFetchProgress(percent, label) {
 
 async function fetchTickersWithProgress(tickers, onProgress) {
   const results = {};
-  let nextIndex = 0;
   let done = 0;
-  const concurrency = 1;
-  async function worker() {
-    while (nextIndex < tickers.length) {
-      const ticker = tickers[nextIndex];
-      nextIndex += 1;
-      results[ticker] = await fetchOneTicker(ticker, (retryTicker) => onProgress(done, tickers.length, retryTicker, true));
+  const chunks = chunkArray(tickers, 4);
+  for (const chunk of chunks) {
+    const batch = await fetchTickerBatch(chunk, (retryTicker) => onProgress(done, tickers.length, retryTicker, true));
+    for (const ticker of chunk) {
+      results[ticker] = batch[ticker] || { ticker, error: "No response", daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
       done += 1;
       onProgress(done, tickers.length, ticker);
-      if (nextIndex < tickers.length) await delay(250);
+    }
+    if (done < tickers.length) await delay(850);
+  }
+  return results;
+}
+
+async function fetchTickerBatch(tickers, onRetry) {
+  const params = new URLSearchParams({
+    tickers: tickers.join(","),
+    start: els.start.value,
+    end: els.end.value,
+    rawDays: els.rawDays.value,
+    intraday: "0",
+  });
+  let lastError = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const payload = await fetchJson(`/api/fetch?${params}`);
+      const data = payload.data || {};
+      const missing = tickers.filter((ticker) => !data[ticker]?.daily?.length);
+      if (!missing.length) return data;
+      if (missing.length < tickers.length) {
+        const fallback = await fetchMissingTickers(missing, onRetry);
+        return { ...data, ...fallback };
+      }
+      lastError = missing.map((ticker) => data[ticker]?.error).filter(Boolean).join("; ") || "No rows returned";
+    } catch (error) {
+      lastError = error.message || String(error);
+    }
+    if (attempt < 1) {
+      tickers.forEach((ticker) => onRetry?.(ticker));
+      await delay(1800);
     }
   }
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  const fallback = await fetchMissingTickers(tickers, onRetry);
+  return Object.keys(fallback).length ? fallback : Object.fromEntries(tickers.map((ticker) => [ticker, { ticker, error: lastError, daily: [], weekly: [], hourly: [], fourHour: [], raw: [] }]));
+}
+
+async function fetchMissingTickers(tickers, onRetry) {
+  const results = {};
+  for (const ticker of tickers) {
+    results[ticker] = await fetchOneTicker(ticker, onRetry);
+    await delay(450);
+  }
   return results;
 }
 
@@ -521,6 +608,12 @@ async function fetchOneTicker(ticker, onRetry, includeIntraday = false) {
     }
   }
   return { ticker, error: lastError, daily: [], weekly: [], hourly: [], fourHour: [], raw: [] };
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
 }
 
 function delay(ms) {
@@ -653,6 +746,7 @@ async function importCsvFiles(event) {
   resetChartView();
   renderTickerButtons();
   render();
+  saveChartSession();
   els.status.textContent = `Imported ${files.length} CSV file(s)`;
 }
 
@@ -668,6 +762,7 @@ function renderTickerButtons() {
       renderTickerButtons();
       if (["hourly", "fourHour"].includes(state.interval)) await ensureIntradayLoaded(ticker);
       render();
+      saveChartSession();
     };
     els.tickerButtons.appendChild(button);
   }
@@ -799,13 +894,24 @@ function drawChart(rows, ticker, interval) {
 
   if (!rows.length) return;
   const visible = getVisibleRows(rows);
+  const indicators = getSelectedOutputIndicators();
   const pad = { left: 56, right: 76, top: 24, bottom: 24 };
-  const rsiH = 135;
-  const volH = 120;
-  const priceH = h - pad.top - pad.bottom - rsiH - volH - 18;
+  const oscillatorPanels = [
+    ...(indicators.rsi ? [{ key: "rsi", height: 120 }] : []),
+    ...(indicators.macd ? [{ key: "macd", height: 120 }] : []),
+  ];
+  const oscillatorGap = oscillatorPanels.length ? 18 : 0;
+  const oscillatorH = oscillatorPanels.reduce((sum, panel) => sum + panel.height, 0) + Math.max(0, oscillatorPanels.length - 1) * 10;
+  const volH = 110;
+  const priceH = Math.max(180, h - pad.top - pad.bottom - volH - oscillatorH - oscillatorGap);
   const priceTop = pad.top;
   const volTop = priceTop + priceH;
-  const rsiTop = volTop + volH + 18;
+  const panelTops = {};
+  let panelTop = volTop + volH + oscillatorGap;
+  oscillatorPanels.forEach((panel) => {
+    panelTops[panel.key] = panelTop;
+    panelTop += panel.height + 10;
+  });
   const plotW = w - pad.left - pad.right;
   const candleW = Math.max(2, Math.min(11, plotW / visible.length * 0.58));
 
@@ -824,11 +930,16 @@ function drawChart(rows, ticker, interval) {
   const xFor = (index) => pad.left + (index + 0.5) * (plotW / visible.length);
   const yPrice = (value) => priceTop + ((pMax - value) / (pMax - pMin)) * priceH;
   const yVol = (value) => volTop + volH - (value / maxVol) * (volH - 12);
-  const yRsi = (value) => rsiTop + ((80 - value) / 60) * rsiH;
+  const yRsi = (value) => panelTops.rsi + ((80 - value) / 60) * 120;
+  const macdAll = indicators.macd ? macdRows(rows) : [];
+  const visibleMacd = indicators.macd ? macdAll.slice(-visible.length) : [];
+  const macdMax = indicators.macd ? Math.max(...visibleMacd.flatMap((row) => [Math.abs(row.macd || 0), Math.abs(row.signal || 0), Math.abs(row.hist || 0)]), 0.01) : 1;
+  const yMacd = (value) => panelTops.macd + 60 - (value / macdMax) * 50;
 
   drawGrid(ctx, pad.left, priceTop, plotW, priceH, 6, 6);
   drawGrid(ctx, pad.left, volTop, plotW, volH, 2, 6);
-  drawGrid(ctx, pad.left, rsiTop, plotW, rsiH, 3, 6);
+  if (indicators.rsi) drawGrid(ctx, pad.left, panelTops.rsi, plotW, 120, 3, 6);
+  if (indicators.macd) drawGrid(ctx, pad.left, panelTops.macd, plotW, 120, 4, 6);
 
   ctx.font = "12px system-ui";
   ctx.fillStyle = colors.muted;
@@ -837,10 +948,12 @@ function drawChart(rows, ticker, interval) {
     const y = yPrice(value);
     ctx.fillText(fmt(value), w - pad.right + 10, y + 4);
   }
-  [30, 50, 70].forEach((value) => {
-    const y = yRsi(value);
-    ctx.fillText(String(value), w - pad.right + 12, y + 4);
-  });
+  if (indicators.rsi) {
+    [30, 50, 70].forEach((value) => {
+      const y = yRsi(value);
+      ctx.fillText(String(value), w - pad.right + 12, y + 4);
+    });
+  }
 
   ctx.font = "12px system-ui";
   ctx.fillStyle = colors.muted;
@@ -852,6 +965,7 @@ function drawChart(rows, ticker, interval) {
     ctx.fillText(label, x, volTop + volH + 13);
   }
   ctx.textAlign = "left";
+  if (indicators.volumeProfile) drawVolumeProfile(ctx, visible, pMin, pMax, priceTop, priceH, pad.left, plotW);
 
   visible.forEach((row, index) => {
     const x = xFor(index);
@@ -881,8 +995,28 @@ function drawChart(rows, ticker, interval) {
   drawLine(ctx, visible, (row) => row.sma?.["100"], xFor, yPrice, colors.sma100, 1.1);
   drawLine(ctx, visible, (row) => row.sma?.["150"], xFor, yPrice, colors.sma150, 1.1);
   drawLine(ctx, visible, (row) => row.sma?.["200"], xFor, yPrice, colors.sma200, 2.2);
-  drawLine(ctx, visible, (row) => row.rsi14, xFor, yRsi, colors.rsi, 1.1);
-  drawLine(ctx, visible, (row) => row.rsiMa14, xFor, yRsi, colors.rsiMa, 1.2);
+  if (indicators.rsi) {
+    drawLine(ctx, visible, (row) => row.rsi14, xFor, yRsi, colors.rsi, 1.1);
+    drawLine(ctx, visible, (row) => row.rsiMa14, xFor, yRsi, colors.rsiMa, 1.2);
+    drawDivergenceSignals(ctx, findDivergences(visible, visible, (row) => row?.rsi14), xFor, yPrice, yRsi, "RSI", w - 120);
+  }
+  if (indicators.macd) {
+    const zeroY = yMacd(0);
+    ctx.strokeStyle = "rgba(232,237,242,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zeroY);
+    ctx.lineTo(pad.left + plotW, zeroY);
+    ctx.stroke();
+    visibleMacd.forEach((row, index) => {
+      const x = xFor(index);
+      const y = yMacd(row.hist || 0);
+      ctx.fillStyle = (row.hist || 0) >= 0 ? "rgba(0,184,135,0.62)" : "rgba(255,76,90,0.62)";
+      ctx.fillRect(x - 3, Math.min(zeroY, y), 6, Math.max(1, Math.abs(zeroY - y)));
+    });
+    drawLine(ctx, visibleMacd, (row) => row.macd, xFor, yMacd, colors.sma50, 1.1);
+    drawLine(ctx, visibleMacd, (row) => row.signal, xFor, yMacd, colors.rsiMa, 1.1);
+    drawDivergenceSignals(ctx, findDivergences(visible, visibleMacd, (row) => row?.macd), xFor, yPrice, yMacd, "MACD", w - 120);
+  }
 
   ctx.fillStyle = "rgba(232,237,242,0.08)";
   ctx.font = "700 74px system-ui";
@@ -892,7 +1026,8 @@ function drawChart(rows, ticker, interval) {
   ctx.font = "12px system-ui";
   ctx.fillStyle = colors.text;
   ctx.fillText("SMA 20 50 100 150 200", pad.left, 16);
-  ctx.fillText("RSI 14", pad.left, rsiTop + 16);
+  if (indicators.rsi) ctx.fillText("RSI 14", pad.left, panelTops.rsi + 16);
+  if (indicators.macd) ctx.fillText("MACD 12 26 9", pad.left, panelTops.macd + 16);
   ctx.fillStyle = colors.muted;
   ctx.textAlign = "right";
   ctx.fillText(`Y ${state.yScale.toFixed(2)}x · ${visible.length} bars`, w - 10, 16);
@@ -1059,7 +1194,7 @@ function findDivergences(priceRows, indicatorRows, indicatorGetter) {
   return signals.sort((a, b) => b.current.index - a.current.index).slice(0, 2);
 }
 
-function drawDivergenceSignals(ctx, signals, xFor, yPrice, yIndicator, label) {
+function drawDivergenceSignals(ctx, signals, xFor, yPrice, yIndicator, label, maxTagX = 1390) {
   signals.forEach((signal) => {
     const color = signal.type === "bullish" ? colors.up : colors.down;
     const marker = signal.type === "bullish" ? "Bull div" : "Bear div";
@@ -1084,7 +1219,7 @@ function drawDivergenceSignals(ctx, signals, xFor, yPrice, yIndicator, label) {
     ctx.lineTo(x2, indicatorY2);
     ctx.stroke();
     ctx.setLineDash([]);
-    const tagX = clamp(x2 + 8, 64, 1390);
+    const tagX = clamp(x2 + 8, 64, maxTagX);
     const tagY = signal.type === "bullish" ? priceY2 + 20 : priceY2 - 20;
     ctx.font = "800 12px system-ui";
     const text = `${label} ${marker}`;
@@ -1639,14 +1774,19 @@ els.csvFile.onchange = importCsvFiles;
 async function setIntervalView(interval) {
   state.interval = interval;
   resetChartView();
+  setIntervalButtons();
+  if (["hourly", "fourHour"].includes(interval)) await ensureIntradayLoaded();
+  render();
+  saveChartSession();
+}
+
+function setIntervalButtons() {
   [
     [els.dailyBtn, "daily"],
     [els.weeklyBtn, "weekly"],
     [els.hourlyBtn, "hourly"],
     [els.fourHourBtn, "fourHour"],
-  ].forEach(([button, value]) => button.classList.toggle("active", value === interval));
-  if (["hourly", "fourHour"].includes(interval)) await ensureIntradayLoaded();
-  render();
+  ].forEach(([button, value]) => button.classList.toggle("active", value === state.interval));
 }
 els.dailyBtn.onclick = () => setIntervalView("daily");
 els.weeklyBtn.onclick = () => setIntervalView("weekly");
@@ -1655,7 +1795,14 @@ els.fourHourBtn.onclick = () => setIntervalView("fourHour");
 els.copyChartBtn.onclick = copyChart;
 els.copyBundleBtn.onclick = copyFullPage;
 els.downloadCsvBtn.onclick = downloadCsv;
+document.querySelectorAll("[data-output-indicator]").forEach((input) => {
+  input.addEventListener("change", () => {
+    render();
+    saveChartSession();
+  });
+});
 window.addEventListener("resize", render);
+window.addEventListener("beforeunload", saveChartSession);
 
 els.chart.addEventListener("mousedown", (event) => {
   const rect = els.chart.getBoundingClientRect();
@@ -1693,6 +1840,7 @@ window.addEventListener("mouseup", () => {
   state.panDrag = null;
   els.chart.classList.remove("axis-dragging");
   els.chart.classList.remove("chart-panning");
+  saveChartSession();
 });
 
 els.chart.addEventListener("dblclick", (event) => {
@@ -1815,8 +1963,12 @@ els.chart.addEventListener("touchend", (event) => {
   if (event.touches.length === 0) {
     state.touchDrag = null;
     state.touchPinch = null;
+    saveChartSession();
   }
 });
 
-setDefaultDates();
-loadTickerLists();
+(async function init() {
+  setDefaultDates();
+  await loadTickerLists();
+  restoreChartSession();
+})();

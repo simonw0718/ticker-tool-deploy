@@ -17,13 +17,15 @@
       <symbol id="icon-template" viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M14 4v4h4"/><path d="M9 13h6M9 16h4"/></symbol>
       <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M8 10v9h8v-9"/></symbol>
     </svg>
+    <nav class="page-switch" aria-label="Page switch">
+      <a class="icon-button" href="/"><svg class="icon"><use href="#icon-chart"></use></svg><span>Chart Tool</span></a>
+    </nav>
     <header class="topbar">
       <div>
         <h1 contenteditable="true" data-field="pageTitle">Trading Records</h1>
         <p contenteditable="true" data-field="pageNote">Position plan, trade records, and add timing.</p>
       </div>
       <nav>
-        <a class="icon-button" href="/"><svg class="icon"><use href="#icon-chart"></use></svg><span>Chart Tool</span></a>
         <button id="copyRecordsBtn" class="icon-button"><svg class="icon"><use href="#icon-copy"></use></svg><span>Copy</span></button>
         <button id="refreshPricesBtn" class="icon-button"><svg class="icon"><use href="#icon-refresh"></use></svg><span>Refresh Prices</span></button>
         <button id="addAccountBtn" class="icon-button"><svg class="icon"><use href="#icon-plus"></use></svg><span>Add Account</span></button>

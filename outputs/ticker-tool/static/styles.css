@@ -45,6 +45,28 @@ body {
   gap: 7px;
 }
 
+.page-switch {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+}
+
+.page-switch a {
+  min-height: 42px;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 12px;
+  background: #151a20;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+
+.page-switch a:hover {
+  background: #1c232b;
+}
+
 button,
 input,
 textarea,
@@ -268,6 +290,7 @@ button:hover {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  padding-right: 126px;
 }
 
 .ticker-buttons {
@@ -752,7 +775,7 @@ tr:hover td {
     z-index: 4;
     grid-template-columns: 1fr;
     margin: -12px -12px 12px;
-    padding: 10px 12px;
+    padding: 58px 12px 10px;
     background: rgba(7, 8, 9, 0.96);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(10px);

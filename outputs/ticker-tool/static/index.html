@@ -20,6 +20,9 @@
       <symbol id="icon-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
       <symbol id="icon-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
     </svg>
+    <nav class="page-switch" aria-label="Page switch">
+      <a class="icon-button" href="/records.html"><svg class="icon"><use href="#icon-records"></use></svg><span>Records</span></a>
+    </nav>
     <main class="app">
       <aside class="panel">
         <div class="brand">
@@ -28,8 +31,6 @@
             <p>Daily / Weekly charts and raw OHLCV</p>
           </div>
         </div>
-        <a class="nav-link icon-button" href="/records.html"><svg class="icon"><use href="#icon-records"></use></svg><span>Records</span></a>
-
         <label class="field">
           <span>TICKERS</span>
           <select id="groupSelect" class="group-select" aria-label="Ticker group"></select>
@@ -95,13 +96,13 @@ QQQ</textarea>
         </header>
 
         <section class="output-options">
-          <span>Full Page</span>
+          <span>Panels</span>
           <label><input type="checkbox" data-output-panel="daily" checked /> Daily</label>
           <label><input type="checkbox" data-output-panel="weekly" checked /> Weekly</label>
           <label><input type="checkbox" data-output-panel="hourly" /> 1H</label>
           <label><input type="checkbox" data-output-panel="fourHour" checked /> 4H</label>
           <label><input type="checkbox" data-output-panel="table" checked /> Table</label>
-          <span>Indicators</span>
+          <span>Chart Indicators</span>
           <label><input type="checkbox" data-output-indicator="rsi" checked /> RSI</label>
           <label><input type="checkbox" data-output-indicator="macd" /> MACD</label>
           <label><input type="checkbox" data-output-indicator="volumeProfile" /> Volume Profile</label>
