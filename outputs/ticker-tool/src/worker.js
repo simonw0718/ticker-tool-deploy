@@ -3,6 +3,7 @@ const STORE_KEYS = new Set(["records", "tickerLists"]);
 const DISPLAY_TIMEZONE = "Asia/Taipei";
 const EXCHANGE_TIMEZONE = "America/New_York";
 const STOOQ_ORIGIN = "https://stooq.com";
+const UPSTREAM_TIMEOUT_MS = 7000;
 
 export default {
   async fetch(request, env) {
@@ -209,7 +210,8 @@ async function fetchDaily(ticker, start, end) {
 function shouldTryStooqRefresh(rows, end) {
   if (!rows.length) return true;
   const last = rows[rows.length - 1]?.date;
-  return Boolean(end && last && end > last);
+  if (!end || !last || end <= last) return false;
+  return calendarDayDiff(last, end) > 4;
 }
 
 function shouldUseIntradayDailyFallback(end) {
@@ -268,7 +270,7 @@ async function fetchStooq(ticker, start, end) {
 }
 
 async function stooqGet(url) {
-  const response = await fetch(url, { headers: stooqHeaders() });
+  const response = await fetchWithTimeout(url, { headers: stooqHeaders() });
   let body = await response.text();
   if (!body.includes("__verify")) return body;
 
@@ -277,7 +279,7 @@ async function stooqGet(url) {
   const token = challenge[1];
   const difficulty = Number(challenge[2]);
   const nonce = await solveStooqChallenge(token, difficulty);
-  const verify = await fetch(`${STOOQ_ORIGIN}/__verify`, {
+  const verify = await fetchWithTimeout(`${STOOQ_ORIGIN}/__verify`, {
     method: "POST",
     headers: {
       ...stooqHeaders(),
@@ -289,7 +291,7 @@ async function stooqGet(url) {
   });
   const cookie = verify.headers.get("set-cookie")?.split(";")[0];
   const retryHeaders = cookie ? { ...stooqHeaders(), cookie } : stooqHeaders();
-  body = await (await fetch(url, { headers: retryHeaders })).text();
+  body = await (await fetchWithTimeout(url, { headers: retryHeaders })).text();
   return body;
 }
 
@@ -334,7 +336,7 @@ async function fetchYahooJson(url) {
   let lastError = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: {
           "user-agent": "Mozilla/5.0 ticker-tool-cloudflare/1.0",
           accept: "application/json",
@@ -350,6 +352,19 @@ async function fetchYahooJson(url) {
     if (attempt < 2) await sleep(300 * (attempt + 1));
   }
   throw new Error(lastError);
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = UPSTREAM_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`Upstream timeout after ${Math.round(timeoutMs / 1000)}s`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function sleep(ms) {
@@ -372,6 +387,13 @@ function addDays(value, days) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function calendarDayDiff(start, end) {
+  const startDate = new Date(`${start}T00:00:00Z`);
+  const endDate = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+  return Math.floor((endDate - startDate) / 86400000);
 }
 
 function parseExchangeDate(value) {

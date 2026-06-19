@@ -67,6 +67,7 @@ const intervalLabels = {
 const WORKER_ORIGIN = "https://ticker-tool.simonw0718.workers.dev";
 const LIST_STORAGE_KEY = "ticker-k-tool-lists-v1";
 const CHART_STORAGE_KEY = "ticker-k-tool-chart-session-v1";
+const API_TIMEOUT_MS = 22000;
 const DEFAULT_OWN_LIST = "AAPL\nMSFT\nNVDA\nTSLA\nSPY\nQQQ";
 const DEFAULT_TICKER_GROUPS = [
   { id: "own", name: "Own", tickers: DEFAULT_OWN_LIST },
@@ -80,12 +81,12 @@ function apiUrl(path) {
   return `${WORKER_ORIGIN}${path}`;
 }
 
-async function fetchJson(path, options) {
+async function fetchJson(path, options = {}) {
   const firstUrl = apiUrl(path);
-  let response = await fetch(firstUrl, options);
+  let response = await fetchWithTimeout(firstUrl, options);
   let text = await response.text();
   if (shouldRetryWorker(firstUrl, response, text)) {
-    response = await fetch(`${WORKER_ORIGIN}${path}`, options);
+    response = await fetchWithTimeout(`${WORKER_ORIGIN}${path}`, options);
     text = await response.text();
   }
   if (!response.ok) throw new Error(`API ${response.status}: ${text.slice(0, 120)}`);
@@ -93,6 +94,19 @@ async function fetchJson(path, options) {
     return JSON.parse(text);
   } catch {
     throw new Error(`API returned ${response.headers.get("content-type") || "non-JSON"} from ${new URL(response.url).hostname}`);
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -535,7 +549,7 @@ function setFetchProgress(percent, label) {
 async function fetchTickersWithProgress(tickers, onProgress) {
   const results = {};
   let done = 0;
-  const chunks = chunkArray(tickers, 4);
+  const chunks = chunkArray(tickers, 1);
   for (const chunk of chunks) {
     const batch = await fetchTickerBatch(chunk, (retryTicker) => onProgress(done, tickers.length, retryTicker, true));
     for (const ticker of chunk) {
